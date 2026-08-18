@@ -13,6 +13,12 @@ class Collections:
     VOICE_SESSIONS = "voice_sessions"
     PREFERENCES = "preferences"
     AUDIT_LOGS = "audit_logs"
+    PERSONAL_PROFILES = "personal_profiles"
+    KNOWLEDGE_DOCUMENTS = "knowledge_documents"
+    KNOWLEDGE_CHUNKS = "knowledge_chunks"
+    KNOWLEDGE_FACTS = "knowledge_facts"
+    TIMETABLES = "timetables"
+    KNOWLEDGE_SOURCES = "knowledge_sources"
 
 def get_collection(collection_name: str) -> Optional[Collection]:
     """Retrieve a collection instance from the active MongoDB database."""
@@ -51,3 +57,22 @@ def get_preferences_col() -> Optional[Collection]:
 
 def get_audit_logs_col() -> Optional[Collection]:
     return get_collection(Collections.AUDIT_LOGS)
+
+def get_personal_profiles_col() -> Optional[Collection]:
+    return get_collection(Collections.PERSONAL_PROFILES)
+
+def get_knowledge_docs_col() -> Optional[Collection]:
+    return get_collection(Collections.KNOWLEDGE_DOCUMENTS)
+
+def get_knowledge_chunks_col() -> Optional[Collection]:
+    return get_collection(Collections.KNOWLEDGE_CHUNKS)
+
+def get_knowledge_facts_col() -> Optional[Collection]:
+    return get_collection(Collections.KNOWLEDGE_FACTS)
+
+def get_timetables_col() -> Optional[Collection]:
+    return get_collection(Collections.TIMETABLES)
+
+def get_knowledge_sources_col() -> Optional[Collection]:
+    return get_collection(Collections.KNOWLEDGE_SOURCES)
+

@@ -93,15 +93,109 @@ class ReminderCreateRequest(BaseModel):
 def create_reminder_endpoint(req: ReminderCreateRequest):
     return scheduler_service.add_reminder(req.title, req.reminder_time, req.due_at)
 
-# --- Gmail / Email Synchronization Endpoints ---
-@app.get("/api/gmail/emails")
-@app.get("/api/email/list")
-def list_emails_endpoint():
-    """Returns real Gmail messages from authenticated account or stored cache."""
-    emails = google_oauth_service.list_all_or_cached_emails()
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Query, File, UploadFile
+from backend.services.knowledge_service import knowledge_service, STORAGE_VAULT_DIR
+
+# --- Personal Knowledge Vault Endpoints ---
+@app.post("/api/knowledge/upload")
+async def upload_knowledge_document(file: UploadFile = File(...)):
+    """Upload PDF, Image, or Document for AI Multimodal Analysis and preview."""
+    try:
+        saved_filename = f"{int(time.time())}_{file.filename}"
+        saved_path = STORAGE_VAULT_DIR / saved_filename
+        with open(saved_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        analysis = knowledge_service.analyze_file(str(saved_path), file.filename)
+        return {
+            "success": True,
+            "preview": analysis
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Knowledge ingestion error: {str(e)}")
+
+class ConfirmSaveKnowledgeRequest(BaseModel):
+    doc_id: str
+    filename: str
+    file_path: str
+    extracted_data: Dict[str, Any]
+
+@app.post("/api/knowledge/confirm-save")
+def confirm_save_knowledge(req: ConfirmSaveKnowledgeRequest):
+    """Commit analyzed document and extracted facts into MongoDB & SQLite."""
+    res = knowledge_service.save_extracted_knowledge(
+        doc_id=req.doc_id,
+        filename=req.filename,
+        file_path=req.file_path,
+        extracted_data=req.extracted_data
+    )
+    return res
+
+@app.get("/api/knowledge/documents")
+def get_knowledge_documents():
+    """List all ingested documents with active/superseded status."""
+    docs = knowledge_service.get_all_documents()
     return {
-        "count": len(emails),
-        "emails": emails
+        "count": len(docs),
+        "documents": docs
+    }
+
+@app.get("/api/knowledge/timetable")
+def get_active_timetable_endpoint():
+    """Retrieve full active timetable grouped by weekday."""
+    return knowledge_service.get_active_timetable()
+
+@app.get("/api/knowledge/today-lectures")
+def get_today_lectures_endpoint(weekday: Optional[str] = Query(None)):
+    """Retrieve today's or specified weekday's lectures."""
+    return knowledge_service.get_today_lectures(target_weekday=weekday)
+
+@app.get("/api/knowledge/next-class")
+def get_next_class_endpoint():
+    """Retrieve the next immediate class today."""
+    return knowledge_service.get_next_class()
+
+@app.get("/api/knowledge/profile")
+def get_personal_profile_endpoint():
+    """Retrieve structured personal profile."""
+    profile = knowledge_service.get_personal_profile()
+    return {
+        "success": True,
+        "profile": profile
+    }
+
+@app.post("/api/knowledge/profile/update")
+def update_personal_profile_endpoint(updates: Dict[str, Any] = Body(...)):
+    """Update personal profile fields."""
+    updated = knowledge_service.update_personal_profile(updates)
+    return {
+        "success": True,
+        "profile": updated
+    }
+
+class ForgetKnowledgeRequest(BaseModel):
+    target: str
+
+@app.post("/api/knowledge/forget")
+def forget_knowledge_endpoint(req: ForgetKnowledgeRequest):
+    """Delete or forget specific knowledge or documents."""
+    return knowledge_service.forget_knowledge(req.target)
+
+@app.get("/api/knowledge/summary")
+def get_knowledge_summary_endpoint():
+    """Aggregate complete personal knowledge overview for HUD display."""
+    profile = knowledge_service.get_personal_profile()
+    timetable = knowledge_service.get_active_timetable()
+    today_lectures = knowledge_service.get_today_lectures()
+    docs = knowledge_service.get_all_documents()
+    return {
+        "profile": profile,
+        "active_document": timetable.get("active_document"),
+        "total_classes": timetable.get("total_classes", 0),
+        "today_lectures": today_lectures,
+        "documents_count": len(docs),
+        "documents": docs[:5]
     }
 
 # --- System & Telemetry Endpoints ---

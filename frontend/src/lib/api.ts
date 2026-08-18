@@ -269,4 +269,102 @@ export async function fetchCalendarEvents(daysAhead: number = 7) {
   return { count: 0, events: [] };
 }
 
+// --- Personal Knowledge Vault API Clients ---
+export async function uploadKnowledgeFile(file: File) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/knowledge/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error('Knowledge upload error:', e);
+  }
+  return { success: false, error: 'Upload failed' };
+}
+
+export async function confirmSaveKnowledge(docId: string, filename: string, filePath: string, extractedData: any) {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/confirm-save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_id: docId,
+        filename,
+        file_path: filePath,
+        extracted_data: extractedData
+      })
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { success: false };
+}
+
+export async function fetchKnowledgeDocs() {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/documents`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { count: 0, documents: [] };
+}
+
+export async function fetchKnowledgeTimetable() {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/timetable`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { active_document: null, total_classes: 0, timetable: {} };
+}
+
+export async function fetchPersonalProfile() {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/profile`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return {
+    success: true,
+    profile: {
+      degree: "BICT",
+      year: "2nd Year",
+      primary_project: "AgriMind AI",
+      university: "Faculty of Technology"
+    }
+  };
+}
+
+export async function updatePersonalProfile(updates: any) {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/profile/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { success: false };
+}
+
+export async function forgetKnowledge(target: string) {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/forget`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target })
+    });
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { success: false };
+}
+
+export async function fetchKnowledgeSummary() {
+  try {
+    const res = await fetch(`${API_BASE}/knowledge/summary`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return null;
+}
+
+
 

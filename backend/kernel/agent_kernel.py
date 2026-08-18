@@ -26,6 +26,8 @@ import backend.tools.computer_tools
 import backend.tools.browser_tools
 import backend.tools.memory_tools
 import backend.tools.whatsapp_tools
+import backend.tools.knowledge_tools
+
 
 class AgentKernel:
     """
@@ -286,27 +288,46 @@ Active Plan: {plan.title} (Category: {plan.agent_category})
         if tool_used == "whatsapp.send_message":
             return "Done, Boss. The WhatsApp message has been sent."
 
-        if tool_used == "memory.store":
-            if isinstance(tool_result, dict) and tool_result.get("message"):
-                return f"{tool_result['message']} Boss."
-            return "Understood, Boss. I have stored that in your memory vault."
+        if tool_used == "knowledge.get_today_lectures":
+            if isinstance(tool_result, dict) and tool_result.get("spoken_summary"):
+                return tool_result["spoken_summary"]
+            return "You have no lectures scheduled for that day on your active timetable, Boss."
 
-        if tool_used == "memory.search":
+        if tool_used == "knowledge.get_next_class":
+            if isinstance(tool_result, dict) and tool_result.get("spoken_summary"):
+                return tool_result["spoken_summary"]
+            return "You don't have any upcoming classes scheduled for today, Boss."
+
+        if tool_used == "knowledge.get_timetable":
             if isinstance(tool_result, dict):
-                mems = tool_result.get("memories", [])
-                if mems:
-                    top = mems[0]
-                    return f"Your {top.get('key')} is {top.get('value')}, Boss."
-                return "I don't have a record of that saved in my memory vault yet, Boss."
+                count = tool_result.get("total_classes", 0)
+                doc = tool_result.get("active_document", "your active document")
+                return f"You have {count} total classes in your active timetable from {doc}, Boss."
+            return "No active timetable is currently loaded in your vault, Boss."
 
-        if relevant_memories:
-            for m in relevant_memories:
-                k = m.get("key", "").lower()
-                v = m.get("value", "")
-                if "project" in k or "main_project" in k or "project" in lower:
-                    return f"Your main project is {v}, Boss."
-                if "preference" in k or "language" in k or "theme" in k:
-                    return f"According to your saved memory, your {m.get('key')} is {v}, Boss."
+        if tool_used == "knowledge.get_profile":
+            if isinstance(tool_result, dict):
+                prof = tool_result.get("profile", {})
+                deg = prof.get("degree", "BICT")
+                yr = prof.get("year", "2nd Year")
+                proj = prof.get("primary_project", "AgriMind AI")
+                if "project" in lower:
+                    return f"Your primary project is {proj}, Boss."
+                return f"According to your personal profile, Boss: you are studying {deg} in your {yr}, and your main project is {proj}."
+
+        if tool_used == "knowledge.forget":
+            if isinstance(tool_result, dict) and tool_result.get("message"):
+                return tool_result["message"]
+            return "Knowledge records updated, Boss."
+
+        if tool_used == "knowledge.search_vault":
+            if isinstance(tool_result, dict):
+                results = tool_result.get("results", [])
+                if results:
+                    top = results[0]
+                    return f"According to your knowledge vault, your {top.get('key')} is {top.get('value')}, Boss."
+                return "I don't have that information in your knowledge vault yet, Boss."
+
 
         if tool_used in ["gmail.getUnreadEmails", "email.read", "gmail.searchEmails", "gmail.getEmail", "gmail.createDraft", "gmail.send", "gmail.reply"]:
             if isinstance(tool_result, dict):

@@ -108,6 +108,68 @@ def init_db():
     );
     """)
 
+    # Personal Profiles Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS personal_profiles (
+        user_id TEXT PRIMARY KEY,
+        profile_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
+    # Knowledge Documents Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS knowledge_documents (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_hash TEXT,
+        mime_type TEXT,
+        doc_type TEXT DEFAULT 'general',
+        summary TEXT,
+        extracted_count INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        uploaded_at TEXT NOT NULL
+    );
+    """)
+
+    # Knowledge Facts Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS knowledge_facts (
+        id TEXT PRIMARY KEY,
+        document_id TEXT,
+        category TEXT NOT NULL,
+        fact_type TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        confidence REAL DEFAULT 1.0,
+        source_type TEXT DEFAULT 'manual',
+        source_name TEXT,
+        page INTEGER,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    # Structured Timetables Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS timetables (
+        id TEXT PRIMARY KEY,
+        document_id TEXT,
+        semester TEXT,
+        weekday TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT,
+        subject TEXT NOT NULL,
+        code TEXT,
+        room TEXT,
+        lecturer TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+    """)
+
+
     # Seed initial system logs and demo data if empty
     cursor.execute("SELECT COUNT(*) as count FROM activity_logs")
     if cursor.fetchone()["count"] == 0:

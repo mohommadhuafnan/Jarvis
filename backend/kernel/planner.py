@@ -138,7 +138,52 @@ class TaskPlanner:
                 ]
                 return TaskPlan(title="WhatsApp: Launch Desktop App", agent_category="computer", is_multi_step=False, steps=steps)
 
-        # 0.2. Memory Store Intent ("Remember that...", "Remember my...")
+        # 0.2. Knowledge: Lectures & Timetable Intents
+        if any(w in lower for w in ["lecture", "lectures", "class", "classes", "timetable", "period"]):
+            if "next" in lower and any(w in lower for w in ["class", "lecture"]):
+                steps = [
+                    TaskStep(id=1, description="Checking active timetable for next immediate class", tool_name="knowledge.get_next_class", arguments={})
+                ]
+                return TaskPlan(title="Knowledge: Query Next Class", agent_category="knowledge", is_multi_step=False, steps=steps)
+            
+            target_day = "today"
+            if "tomorrow" in lower:
+                target_day = "tomorrow"
+            else:
+                for day_name in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+                    if day_name in lower:
+                        target_day = day_name
+                        break
+            
+            if any(w in lower for w in ["show timetable", "what timetable", "full timetable", "view timetable", "using"]):
+                steps = [
+                    TaskStep(id=1, description="Retrieving active semester timetable", tool_name="knowledge.get_timetable", arguments={})
+                ]
+                return TaskPlan(title="Knowledge: View Active Timetable", agent_category="knowledge", is_multi_step=False, steps=steps)
+
+            steps = [
+                TaskStep(id=1, description=f"Querying active semester timetable for {target_day}'s scheduled classes", tool_name="knowledge.get_today_lectures", arguments={"weekday": target_day})
+            ]
+            return TaskPlan(title=f"Knowledge: Query Lectures for {target_day.capitalize()}", agent_category="knowledge", is_multi_step=False, steps=steps)
+
+        # 0.3. Knowledge: Profile & 'What do you know about me?'
+        if any(phrase in lower for phrase in ["what do you know about me", "tell me about myself", "my profile", "who am i", "my main project", "what is my main project", "what project"]):
+            steps = [
+                TaskStep(id=1, description="Retrieving structured personal profile from knowledge vault", tool_name="knowledge.get_profile", arguments={})
+            ]
+            return TaskPlan(title="Knowledge: Personal Profile Query", agent_category="knowledge", is_multi_step=False, steps=steps)
+
+        # 0.4. Knowledge: Forget / Delete Intent
+        if lower.startswith("forget") or "delete my timetable" in lower or "delete timetable" in lower:
+            target = re.sub(r'^(jarvis\s*,?\s*)?forget(\s+that)?\s+', '', user_command, flags=re.I).strip()
+            if not target:
+                target = "target"
+            steps = [
+                TaskStep(id=1, description=f"Requesting confirmation to forget '{target}' from knowledge vault [CONFIRM]", tool_name="knowledge.forget", arguments={"target": target})
+            ]
+            return TaskPlan(title=f"Knowledge: Forget '{target}' [CONFIRM]", agent_category="knowledge", is_multi_step=False, steps=steps)
+
+        # 0.5. Memory Store Intent ("Remember that...", "Remember my...")
         if lower.startswith("remember") or "remember that" in lower:
             clean = re.sub(r'^(jarvis\s*,?\s*)?remember(\s+that)?\s+', '', user_command, flags=re.I).strip()
             key = "fact"
@@ -158,11 +203,11 @@ class TaskPlanner:
 
             steps = [
                 TaskStep(id=1, description=f"Storing '{key}' in long-term memory vault", tool_name="memory.store", arguments={"key": key, "value": value, "category": category}),
-                TaskStep(id=2, description="Synchronizing with MongoDB vault", tool_name=None)
+                TaskStep(id=2, description="Confirming persistent memory commit", tool_name=None)
             ]
-            return TaskPlan(title=f"Memory: Store '{key}'", agent_category="system", is_multi_step=False, steps=steps)
+            return TaskPlan(title=f"Memory: Store '{key}'", agent_category="memory", is_multi_step=False, steps=steps)
 
-        # 0.3. Memory Recall Intent ("What is my...", "What's my...", "Who is my...")
+        # 0.6. Memory Recall Intent ("What is my...", "What's my...", "Who is my...")
         if any(w in lower for w in ["what is my", "what's my", "who is my", "recall my", "what project", "tell me about my project", "what did i ask"]):
             query = re.sub(r'^(what\s+is\s+my|what\'s\s+my|who\s+is\s+my|recall\s+my|tell\s+me\s+about\s+my)\s+', '', lower).strip()
             steps = [
