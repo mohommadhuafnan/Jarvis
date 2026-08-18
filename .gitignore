@@ -1,0 +1,68 @@
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+*.env
+*client_secret*.json
+backend/client_secret.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node.js & Vite
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+dist/
+dist-ssr/
+*.local
+
+# Database & SQLite files
+*.db
+*.sqlite
+*.sqlite3
+jarvis_data.db
+
+# Logs & temporary files
+*.log
+logs/
+temp/
+tmp/
+workspace/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

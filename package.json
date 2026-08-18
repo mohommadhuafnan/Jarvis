@@ -1,0 +1,27 @@
+{
+  "name": "jarvis-ai-assistant",
+  "version": "2.5.1",
+  "description": "JARVIS - Futuristic Cyberpunk Red HUD Personal AI Assistant Operating System with Gemini AI",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "start:backend": "python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload"
+  },
+  "keywords": [
+    "jarvis",
+    "ai-assistant",
+    "cyberpunk",
+    "hacker-hud",
+    "gemini",
+    "voice-first",
+    "barge-in",
+    "speech-recognition",
+    "fastapi",
+    "react"
+  ],
+  "author": "DeepMind Agentic",
+  "license": "MIT",
+  "dependencies": {
+    "mongodb": "^7.5.0"
+  }
+}
