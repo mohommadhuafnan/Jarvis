@@ -36,6 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.services.scheduler_service import scheduler_service
+from backend.services.google_oauth_service import google_oauth_service
+
 @app.on_event("startup")
 def startup_event():
     # 1. Initialize local SQLite (Phase 1/2 retention for OAuth and local caches)
@@ -51,12 +54,55 @@ def startup_event():
     else:
         print(f"[{ASSISTANT_NAME}] WARNING: MongoDB connection pending or offline.")
 
+    # 3. Start background reminder scheduler daemon
+    scheduler_service.start()
+
     print(f"[{ASSISTANT_NAME}] AI Command Center Backend Online.")
 
 @app.on_event("shutdown")
 def shutdown_event():
+    scheduler_service.stop()
     close_mongo_connection()
-    print(f"[{ASSISTANT_NAME}] MongoDB connection gracefully closed.")
+    print(f"[{ASSISTANT_NAME}] Services & MongoDB gracefully closed.")
+
+# --- Reminder Scheduler Endpoints ---
+@app.get("/api/reminders/due")
+def get_due_reminders():
+    """Pop and return due notifications to be spoken immediately by frontend."""
+    notifications = scheduler_service.pop_due_notifications()
+    return {
+        "count": len(notifications),
+        "due_reminders": notifications
+    }
+
+@app.get("/api/reminders/all")
+def get_all_reminders():
+    """Return all scheduled reminders."""
+    reminders = scheduler_service.get_all_reminders()
+    return {
+        "count": len(reminders),
+        "reminders": reminders
+    }
+
+class ReminderCreateRequest(BaseModel):
+    title: str
+    reminder_time: str
+    due_at: Optional[str] = None
+
+@app.post("/api/reminders/create")
+def create_reminder_endpoint(req: ReminderCreateRequest):
+    return scheduler_service.add_reminder(req.title, req.reminder_time, req.due_at)
+
+# --- Gmail / Email Synchronization Endpoints ---
+@app.get("/api/gmail/emails")
+@app.get("/api/email/list")
+def list_emails_endpoint():
+    """Returns real Gmail messages from authenticated account or stored cache."""
+    emails = google_oauth_service.list_all_or_cached_emails()
+    return {
+        "count": len(emails),
+        "emails": emails
+    }
 
 # --- System & Telemetry Endpoints ---
 @app.get("/api/health")

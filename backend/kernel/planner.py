@@ -1,5 +1,6 @@
 import re
 import json
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
@@ -17,6 +18,85 @@ class TaskPlan(BaseModel):
     steps: List[TaskStep]
     estimated_duration_seconds: float = 1.0
 
+def parse_natural_datetime(text: str) -> Dict[str, Any]:
+    """
+    Parses natural language date and time expressions into exact timestamps and formats.
+    """
+    now = datetime.now()
+    lower = text.lower()
+
+    # 1. Relative minutes / hours: "in 10 minutes", "in 1 hour", "in 5 min"
+    rel_m = re.search(r'in\s+(\d+)\s*(minute|min|hour|hr)s?', lower)
+    if rel_m:
+        val = int(rel_m.group(1))
+        unit = rel_m.group(2)
+        target_dt = now + timedelta(minutes=val) if "min" in unit else now + timedelta(hours=val)
+        return {
+            "iso_start": target_dt.isoformat(),
+            "iso_end": (target_dt + timedelta(hours=1)).isoformat(),
+            "due_at": target_dt.isoformat(),
+            "display_time": target_dt.strftime("%I:%M %p").lstrip("0"),
+            "display_date": "today" if target_dt.date() == now.date() else "tomorrow",
+            "target_dt": target_dt
+        }
+
+    # 2. Date determination
+    target_date = now.date()
+    display_date = "today"
+    if "tomorrow" in lower:
+        target_date = now.date() + timedelta(days=1)
+        display_date = "tomorrow"
+    elif "day after tomorrow" in lower:
+        target_date = now.date() + timedelta(days=2)
+        display_date = "day after tomorrow"
+
+    # 3. Time extraction (e.g., "4:30 AM", "4:30 am", "4.30am", "8 PM", "15:00", "04:30")
+    time_m = re.search(r'(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?', lower)
+    hour = 9
+    minute = 0
+    found_time = False
+
+    if time_m:
+        h = int(time_m.group(1))
+        m = int(time_m.group(2)) if time_m.group(2) else 0
+        ampm = time_m.group(3)
+
+        if ampm:
+            ampm = ampm.lower()
+            if ampm == "pm" and h < 12:
+                h += 12
+            elif ampm == "am" and h == 12:
+                h = 0
+            hour, minute = h, m
+            found_time = True
+        elif h <= 24 and ("at " in lower or "for " in lower or ":" in time_m.group(0)):
+            hour, minute = h, m
+            found_time = True
+
+    if not found_time:
+        if "morning" in lower:
+            hour, minute = 9, 0
+        elif "afternoon" in lower:
+            hour, minute = 14, 0
+        elif "evening" in lower:
+            hour, minute = 18, 0
+        elif "night" in lower:
+            hour, minute = 20, 0
+
+    target_dt = datetime(target_date.year, target_date.month, target_date.day, hour, minute, 0)
+    if "tomorrow" not in lower and target_dt < now and "today" not in lower:
+        target_dt += timedelta(days=1)
+        display_date = "tomorrow"
+
+    return {
+        "iso_start": target_dt.isoformat(),
+        "iso_end": (target_dt + timedelta(hours=1)).isoformat(),
+        "due_at": target_dt.isoformat(),
+        "display_time": target_dt.strftime("%I:%M %p").lstrip("0"),
+        "display_date": display_date,
+        "target_dt": target_dt
+    }
+
 class TaskPlanner:
     def __init__(self):
         pass
@@ -32,10 +112,9 @@ class TaskPlanner:
             ]
             return TaskPlan(title="Emergency Stop", agent_category="system", is_multi_step=False, steps=steps)
 
-        # 0.4. WhatsApp Intent
+        # 0.1. WhatsApp Intent
         if "whatsapp" in lower:
             if any(w in lower for w in ["send", "message", "tell", "text"]):
-                # Extract recipient and message text
                 recip = "Contact"
                 msg_text = "Hello"
                 m = re.search(r'(?:to|contact)\s+([a-zA-Z0-9_\+]+)\s+(?:saying|that|with message|message)\s+(.*)', user_command, flags=re.I)
@@ -59,7 +138,7 @@ class TaskPlanner:
                 ]
                 return TaskPlan(title="WhatsApp: Launch Desktop App", agent_category="computer", is_multi_step=False, steps=steps)
 
-        # 0.5. Memory Store Intent ("Remember that...", "Remember my...")
+        # 0.2. Memory Store Intent ("Remember that...", "Remember my...")
         if lower.startswith("remember") or "remember that" in lower:
             clean = re.sub(r'^(jarvis\s*,?\s*)?remember(\s+that)?\s+', '', user_command, flags=re.I).strip()
             key = "fact"
@@ -83,7 +162,7 @@ class TaskPlanner:
             ]
             return TaskPlan(title=f"Memory: Store '{key}'", agent_category="system", is_multi_step=False, steps=steps)
 
-        # 0.6. Memory Recall Intent ("What is my...", "What's my...", "Who is my...")
+        # 0.3. Memory Recall Intent ("What is my...", "What's my...", "Who is my...")
         if any(w in lower for w in ["what is my", "what's my", "who is my", "recall my", "what project", "tell me about my project", "what did i ask"]):
             query = re.sub(r'^(what\s+is\s+my|what\'s\s+my|who\s+is\s+my|recall\s+my|tell\s+me\s+about\s+my)\s+', '', lower).strip()
             steps = [
@@ -92,27 +171,63 @@ class TaskPlanner:
             ]
             return TaskPlan(title=f"Memory: Recall '{query}'", agent_category="system", is_multi_step=False, steps=steps)
 
-        # 0.7. Reminders Intent ("Remind me at 8 PM to work on AgriMind", "Set a reminder...")
-        if lower.startswith("remind") or "remind me" in lower or "set a reminder" in lower:
-            time_match = re.search(r'(?:at|for|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)|tomorrow|tonight)', user_command, flags=re.I)
-            remind_time = time_match.group(1).strip() if time_match else "later today"
-            
-            clean_remind = re.sub(r'^(jarvis\s*,?\s*)?(remind\s+me|set\s+a\s+reminder)\s+(to\s+|at\s+[^\s]+\s+to\s+|for\s+)', '', user_command, flags=re.I).strip()
-            # Remove the time part from reminder text if captured
-            if time_match:
-                clean_remind = clean_remind.replace(time_match.group(0), "").strip()
+        # 0.4. Compound Calendar + Reminder Intent
+        # Example: "Tomorrow I have a meeting at 4:30 AM. Remind me." or "I have a meeting at 3 PM tomorrow. Remind me to attend."
+        if ("meeting" in lower or "event" in lower or "appointment" in lower) and ("remind" in lower or "reminder" in lower):
+            dt_info = parse_natural_datetime(user_command)
+            title = "Meeting"
+            if "with " in lower:
+                title = f"Meeting with {user_command.split('with ')[1].split(' ')[0]}"
+            elif "doctor" in lower:
+                title = "Doctor Appointment"
+            elif "project" in lower:
+                title = "Project Meeting"
 
             steps = [
-                TaskStep(id=1, description=f"Scheduling reminder for {remind_time}", tool_name="tasks.create_reminder", arguments={"reminder_text": clean_remind or "Follow up task", "reminder_time": remind_time}),
-                TaskStep(id=2, description="Persisting reminder to MongoDB task scheduler", tool_name=None)
+                TaskStep(id=1, description=f"Scheduling calendar event '{title}' for {dt_info['display_date']} at {dt_info['display_time']} [CONFIRM]", tool_name="calendar.createEvent", arguments={"title": title, "start_time": dt_info["iso_start"], "end_time": dt_info["iso_end"]}),
+                TaskStep(id=2, description=f"Persisting verified background reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": title, "reminder_time": f"{dt_info['display_date']} at {dt_info['display_time']}", "due_at": dt_info["due_at"]})
             ]
-            return TaskPlan(title=f"Reminder: {clean_remind} ({remind_time})", agent_category="system", is_multi_step=False, steps=steps)
+            return TaskPlan(title=f"Calendar & Reminder: {title} ({dt_info['display_date']} at {dt_info['display_time']})", agent_category="google", is_multi_step=True, steps=steps)
 
-        # 1. Multi-Step Check: E.g., "Check calendar and email me the details"
+        # 0.5. Pure Reminders Intent ("Remind me tomorrow at 8 AM to work on AgriMind", "Remind me in 10 minutes to call Bob")
+        if lower.startswith("remind") or "remind me" in lower or "set a reminder" in lower:
+            dt_info = parse_natural_datetime(user_command)
+            clean_remind = re.sub(r'^(jarvis\s*,?\s*)?(remind\s+me|set\s+a\s+reminder)\s+(to\s+|at\s+[^\s]+\s+to\s+|for\s+)', '', user_command, flags=re.I).strip()
+            clean_remind = re.sub(r'(?:tomorrow|today|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\bin\s+\d+\s*(?:minutes?|hours?))', '', clean_remind, flags=re.I).strip()
+            clean_remind = clean_remind or "Follow up task"
+
+            steps = [
+                TaskStep(id=1, description=f"Scheduling persistent reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": clean_remind, "reminder_time": f"{dt_info['display_date']} at {dt_info['display_time']}", "due_at": dt_info["due_at"]}),
+                TaskStep(id=2, description="Registering in background scheduler daemon", tool_name=None)
+            ]
+            return TaskPlan(title=f"Reminder: {clean_remind} ({dt_info['display_date']} at {dt_info['display_time']})", agent_category="system", is_multi_step=False, steps=steps)
+
+        # 0.6. Pure Calendar Creation Intent ("Schedule a meeting tomorrow at 3 PM", "Add to my calendar...")
+        if any(w in lower for w in ["schedule a", "schedule meeting", "create event", "create a meeting", "add meeting", "book a meeting", "add to my calendar"]):
+            dt_info = parse_natural_datetime(user_command)
+            title_text = "Meeting"
+            if "with " in lower:
+                title_text = f"Meeting with {user_command.split('with ')[1].split(' ')[0]}"
+            steps = [
+                TaskStep(id=1, description=f"Requesting confirmation to schedule {title_text} for {dt_info['display_date']} at {dt_info['display_time']} [CONFIRM]", tool_name="calendar.createEvent", arguments={"title": title_text, "start_time": dt_info["iso_start"], "end_time": dt_info["iso_end"]}),
+                TaskStep(id=2, description="Verifying Google Calendar event persistence", tool_name=None)
+            ]
+            return TaskPlan(title=f"Calendar: Schedule {title_text} [CONFIRM]", agent_category="google", is_multi_step=False, steps=steps)
+
+        # 0.7. Pure Calendar Inquiry Intent ("What's on my calendar tomorrow?", "What is on my calendar today?")
+        if any(w in lower for w in ["what is on my calendar", "what's on my calendar", "what's happening on my calendar", "calendar today", "calendar tomorrow", "next meeting", "do i have anything"]):
+            days = 2 if "tomorrow" in lower else 1
+            steps = [
+                TaskStep(id=1, description="Querying Google Calendar store", tool_name="calendar.listEvents", arguments={"days_ahead": days}),
+                TaskStep(id=2, description="Formatting schedule briefing", tool_name=None)
+            ]
+            return TaskPlan(title="Calendar Schedule Briefing", agent_category="google", is_multi_step=False, steps=steps)
+
+        # 1. Multi-Step Calendar + Email Cross-Check
         if ("calendar" in lower or "meeting" in lower) and ("email" in lower or "inbox" in lower):
             steps = [
-                TaskStep(id=1, description="Inspecting scheduled calendar events for meeting details", tool_name="calendar.listEvents", arguments={"days_ahead": 2}),
-                TaskStep(id=2, description="Searching Gmail inbox for threads matching meeting context", tool_name="gmail.searchEmails", arguments={"query": "Meeting OR AgriMind"}),
+                TaskStep(id=1, description="Inspecting scheduled calendar events", tool_name="calendar.listEvents", arguments={"days_ahead": 2}),
+                TaskStep(id=2, description="Searching Gmail inbox for meeting threads", tool_name="gmail.searchEmails", arguments={"query": "Meeting OR AgriMind"}),
                 TaskStep(id=3, description="Correlating meeting briefing with sender details", tool_name=None)
             ]
             return TaskPlan(title="Cross-Agent: Calendar & Gmail Intelligence Correlation", agent_category="google", is_multi_step=True, steps=steps)
@@ -243,10 +358,19 @@ class TaskPlanner:
             ]
             return TaskPlan(title="Gmail: Create Draft Reply", agent_category="google", is_multi_step=False, steps=steps)
 
-        if any(w in lower for w in ["send the draft", "send it", "send email", "send this email"]):
+        if any(w in lower for w in ["send the draft", "send it", "send email", "send this email", "send an email to"]):
+            recip = "contact@domain.com"
+            body_txt = "I will attend as discussed."
+            if "to " in lower:
+                m = re.search(r'to\s+([a-zA-Z0-9_\+\@\.]+)\s+(?:saying|that)?\s*(.*)', user_command, flags=re.I)
+                if m:
+                    recip = m.group(1).strip()
+                    if "@" not in recip:
+                        recip = f"{recip.lower()}@example.com"
+                    body_txt = m.group(2).strip() or body_txt
             steps = [
                 TaskStep(id=1, description="Validating recipient address and message body", tool_name=None),
-                TaskStep(id=2, description="Requesting explicit user authorization [CONFIRM]", tool_name="gmail.send", arguments={"recipient": "contact@domain.com", "subject": "Re: Update", "body": "I will attend as discussed."}),
+                TaskStep(id=2, description=f"Requesting user authorization to send email to {recip} [CONFIRM]", tool_name="gmail.send", arguments={"recipient": recip, "subject": "Update", "body": body_txt}),
                 TaskStep(id=3, description="Dispatching email via Google API gateway", tool_name=None)
             ]
             return TaskPlan(title="Gmail: Send Email [CONFIRM]", agent_category="google", is_multi_step=False, steps=steps)
@@ -276,28 +400,7 @@ class TaskPlanner:
             ]
             return TaskPlan(title="Gmail: Check Unread Emails", agent_category="google", is_multi_step=False, steps=steps)
 
-        # 7. Calendar Specific Intents
-        if any(w in lower for w in ["schedule a", "schedule meeting", "create event", "create a meeting", "add meeting", "book something"]):
-            title_text = "Meeting"
-            if "with " in lower:
-                title_text = f"Meeting with {user_command.split('with ')[1].split(' ')[0]}"
-            target_start = "Tomorrow 15:00" if ("tomorrow" in lower or "3 pm" in lower or "afternoon" in lower) else "Tomorrow 10:00"
-            steps = [
-                TaskStep(id=1, description="Validating meeting parameters and attendee addresses", tool_name=None),
-                TaskStep(id=2, description=f"Requesting user confirmation to schedule {title_text} [CONFIRM]", tool_name="calendar.createEvent", arguments={"title": title_text, "start_time": target_start, "end_time": "Tomorrow 16:00"}),
-                TaskStep(id=3, description="Dispatching event to Google Calendar store", tool_name=None)
-            ]
-            return TaskPlan(title=f"Calendar: Schedule {title_text} [CONFIRM]", agent_category="google", is_multi_step=False, steps=steps)
-
-        if any(w in lower for w in ["what is on my calendar", "what's on my calendar", "what's happening on my calendar", "calendar today", "next meeting", "do i have anything"]):
-            steps = [
-                TaskStep(id=1, description="Accessing Google Calendar store", tool_name=None),
-                TaskStep(id=2, description="Fetching today's schedule and evaluating conflicts", tool_name="calendar.listEvents", arguments={"days_ahead": 1}),
-                TaskStep(id=3, description="Formatting schedule briefing", tool_name=None)
-            ]
-            return TaskPlan(title="Calendar Schedule Briefing", agent_category="google", is_multi_step=False, steps=steps)
-
-        # 8. Web Search Intent
+        # 7. Web Search Intent
         if any(w in lower for w in ["search for", "google for", "search google", "lookup"]):
             query = re.sub(r'^(search\s+google\s+for\s+|search\s+for\s+|google\s+for\s+|lookup\s+)', '', user_command, flags=re.I).strip() or "latest news"
             steps = [

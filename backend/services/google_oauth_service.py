@@ -302,16 +302,74 @@ class GoogleOAuthService:
                 if msg_detail.get("success"):
                     parsed_messages.append(msg_detail)
 
+            # Store in local DB cache for instant HUD sync
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS cached_emails (
+                        id TEXT PRIMARY KEY,
+                        sender TEXT,
+                        subject TEXT,
+                        date TEXT,
+                        snippet TEXT,
+                        unread INTEGER DEFAULT 1,
+                        updated_at TEXT
+                    )
+                """)
+                now_str = datetime.now().isoformat()
+                for m in parsed_messages:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO cached_emails (id, sender, subject, date, snippet, unread, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 1, ?)
+                    """, (m["id"], m.get("from"), m.get("subject"), m.get("date"), m.get("snippet"), now_str))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error caching emails to SQLite: {e}")
+
             return {
                 "success": True,
                 "connected": True,
                 "count": len(parsed_messages),
                 "messages": parsed_messages,
-                "summary": f"You have {len(parsed_messages)} unread emails in your inbox." if parsed_messages else "No unread emails in your inbox, Commander."
+                "summary": f"You have {len(parsed_messages)} unread emails in your inbox, Boss." if parsed_messages else "No unread emails in your inbox, Boss."
             }
         except Exception as e:
             logger.error(f"Error fetching unread Gmail messages: {e}")
             return {"success": False, "error": str(e), "message": "Failed to communicate with Gmail API."}
+
+    def list_all_or_cached_emails(self) -> List[Dict[str, Any]]:
+        """Retrieve real Gmail emails from cache or live API for the HUD Email view."""
+        # 1. Try SQLite cache first for instant (<10ms) HUD display
+        cached = []
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM cached_emails ORDER BY updated_at DESC LIMIT 20")
+            rows = cursor.fetchall()
+            for r in rows:
+                cached.append({
+                    "id": r["id"],
+                    "from": r["sender"],
+                    "subject": r["subject"],
+                    "date": r["date"],
+                    "snippet": r["snippet"],
+                    "unread": bool(r["unread"])
+                })
+            conn.close()
+            if cached:
+                return cached
+        except Exception:
+            pass
+
+        # 2. Try Live API if cache empty and connected
+        if self.is_connected():
+            live_res = self.list_unread_emails(max_results=5)
+            if live_res.get("success") and live_res.get("messages"):
+                return live_res["messages"]
+
+        return []
 
     def search_emails(self, query: str, max_results: int = 5) -> Dict[str, Any]:
         """Search Gmail inbox with query parameters."""
@@ -363,7 +421,6 @@ class GoogleOAuthService:
         headers = {"Authorization": f"Bearer {token}"}
 
         if message_id in ["latest", "recent", "new"]:
-            # Retrieve ID of latest message
             list_res = requests.get("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1", headers=headers, timeout=6)
             if list_res.status_code == 200:
                 msgs = list_res.json().get("messages", [])
@@ -388,7 +445,6 @@ class GoogleOAuthService:
             date = headers_dict.get("date", "")
             snippet = data.get("snippet", "")
 
-            # Body parsing
             body_text = snippet
             parts = payload.get("parts", [])
             for p in parts:
@@ -448,7 +504,7 @@ class GoogleOAuthService:
             return {"success": False, "error": str(e)}
 
     def send_email(self, recipient: str, subject: str, body: str) -> Dict[str, Any]:
-        """Send an email through user's real Gmail account."""
+        """Send an email through user's real Gmail account and verify dispatch."""
         token = self.get_valid_access_token()
         if not token:
             return {
@@ -468,20 +524,25 @@ class GoogleOAuthService:
             res = requests.post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", headers=headers, json=payload, timeout=10)
             if res.status_code in [200, 201]:
                 data = res.json()
+                msg_id = data.get("id")
+                # Verify message existence
+                verify_res = requests.get(f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}", headers=headers, timeout=6)
+                verified = verify_res.status_code == 200
                 return {
                     "success": True,
-                    "message_id": data.get("id"),
+                    "verified": verified,
+                    "message_id": msg_id,
                     "recipient": recipient,
                     "subject": subject,
                     "status": "DISPATCHED",
-                    "message": f"Email successfully sent to {recipient} with subject '{subject}'."
+                    "message": f"Done, Boss. The email to {recipient} has been sent."
                 }
             return {"success": False, "error": f"Gmail send failed: {res.status_code}", "message": res.text}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     # =========================================================================
-    # GOOGLE CALENDAR API INTEGRATION
+    # GOOGLE CALENDAR API INTEGRATION WITH STRICT VERIFY-AFTER-CREATE
     # =========================================================================
 
     def list_calendar_events(self, days_ahead: int = 7) -> Dict[str, Any]:
@@ -491,7 +552,7 @@ class GoogleOAuthService:
             return {
                 "success": False,
                 "connected": False,
-                "message": "Your Google Calendar is not connected yet. Please authorize Google in Settings."
+                "message": "Your Google Calendar is not connected yet, Boss."
             }
 
         headers = {"Authorization": f"Bearer {token}"}
@@ -506,7 +567,7 @@ class GoogleOAuthService:
         try:
             res = requests.get(url, headers=headers, timeout=8)
             if res.status_code != 200:
-                return {"success": False, "error": f"Calendar API error: {res.status_code}"}
+                return {"success": False, "error": f"Calendar API error: {res.status_code}", "message": "Failed to communicate with Google Calendar API."}
 
             data = res.json()
             items = data.get("items", [])
@@ -529,43 +590,107 @@ class GoogleOAuthService:
                 "connected": True,
                 "event_count": len(events),
                 "events": events,
-                "summary": f"Found {len(events)} upcoming events on your calendar." if events else "No upcoming events scheduled on your calendar."
+                "summary": f"Found {len(events)} upcoming events on your calendar, Boss." if events else "No upcoming events scheduled on your calendar, Boss."
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def create_calendar_event(self, title: str, start_time: str, end_time: str, description: str = "") -> Dict[str, Any]:
-        """Create an event on user's real Google Calendar."""
+        """
+        Create an event on user's real Google Calendar, verify its existence via get API,
+        and persist event metadata in MongoDB and SQLite single source of truth.
+        """
         token = self.get_valid_access_token()
         if not token:
             return {
                 "success": False,
                 "connected": False,
-                "message": "Your Google Calendar is not connected yet."
+                "verified": False,
+                "message": "Your Google Calendar is not connected yet, Boss. Cannot schedule event."
             }
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        
+        # Ensure ISO formatted strings
         payload = {
             "summary": title,
             "description": description,
-            "start": {"dateTime": start_time, "timeZone": "Asia/Kolkata"},
-            "end": {"dateTime": end_time, "timeZone": "Asia/Kolkata"}
+            "start": {"dateTime": start_time if "T" in start_time else f"{start_time}T09:00:00+05:30", "timeZone": "Asia/Kolkata"},
+            "end": {"dateTime": end_time if "T" in end_time else f"{end_time}T10:00:00+05:30", "timeZone": "Asia/Kolkata"}
         }
 
         try:
-            res = requests.post("https://www.googleapis.com/calendar/v3/calendars/primary/events", headers=headers, json=payload, timeout=8)
-            if res.status_code in [200, 201]:
-                evt = res.json()
+            # 1. Google Calendar API Insertion
+            res = requests.post("https://www.googleapis.com/calendar/v3/calendars/primary/events", headers=headers, json=payload, timeout=10)
+            if res.status_code not in [200, 201]:
+                return {"success": False, "verified": False, "error": f"Calendar creation failed: {res.status_code}", "message": "Google Calendar API rejected the event creation."}
+
+            evt = res.json()
+            event_id = evt.get("id")
+
+            # 2. Strict Verification Step (getEvent)
+            verify_res = requests.get(f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}", headers=headers, timeout=8)
+            if verify_res.status_code != 200:
                 return {
-                    "success": True,
-                    "event_id": evt.get("id"),
-                    "title": title,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "message": f"Calendar event '{title}' scheduled successfully."
+                    "success": False,
+                    "verified": False,
+                    "message": "I sent the event to Google Calendar, but could not verify its creation, Boss."
                 }
-            return {"success": False, "error": f"Calendar creation failed: {res.status_code}"}
+
+            # 3. Database Persistence (Single Source of Truth)
+            now_iso = datetime.now().isoformat()
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS calendar_events (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        start_time TEXT NOT NULL,
+                        end_time TEXT NOT NULL,
+                        description TEXT,
+                        verified INTEGER DEFAULT 1,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO calendar_events (id, title, start_time, end_time, description, verified, created_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                """, (event_id, title, start_time, end_time, description, now_iso))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error persisting calendar event to SQLite: {e}")
+
+            try:
+                col = get_collection("calendar_events")
+                if col is not None:
+                    col.update_one(
+                        {"_id": event_id},
+                        {"$set": {
+                            "_id": event_id,
+                            "title": title,
+                            "startTime": start_time,
+                            "endTime": end_time,
+                            "description": description,
+                            "verified": True,
+                            "createdAt": now_iso
+                        }},
+                        upsert=True
+                    )
+            except Exception:
+                pass
+
+            return {
+                "success": True,
+                "verified": True,
+                "event_id": event_id,
+                "title": title,
+                "start_time": start_time,
+                "end_time": end_time,
+                "message": f"Done, Boss. Your meeting '{title}' is scheduled and verified on Google Calendar."
+            }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "verified": False, "error": str(e), "message": "Failed to communicate with Google Calendar."}
 
 google_oauth_service = GoogleOAuthService()

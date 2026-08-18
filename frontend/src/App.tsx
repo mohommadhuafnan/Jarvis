@@ -23,7 +23,7 @@ import { audioManager } from './lib/voice/AudioContextManager';
 import { speechEngine, VoiceMode } from './lib/voice/SpeechToText';
 import { geminiVoiceService } from './lib/voice/GeminiVoiceService';
 import { soundFX } from './lib/sound/SoundFX';
-import { fetchSystemStats, sendChatMessage, processVoiceGatewayTurn, interruptVoiceGateway, fetchVoiceTelemetry } from './lib/api';
+import { fetchSystemStats, sendChatMessage, processVoiceGatewayTurn, interruptVoiceGateway, fetchVoiceTelemetry, fetchDueReminders } from './lib/api';
 
 
 export function App() {
@@ -180,6 +180,59 @@ export function App() {
       if (replyTimeoutRef.current) clearTimeout(replyTimeoutRef.current);
     };
   }, [continuousConversation, userName]);
+
+  // Background Reminder Notification Daemon Listener (Fires without button clicks)
+  useEffect(() => {
+    const reminderInterval = setInterval(async () => {
+      try {
+        const res = await fetchDueReminders();
+        if (res.due_reminders && res.due_reminders.length > 0) {
+          for (const rem of res.due_reminders) {
+            const spokenText = rem.spoken_notification || `Boss, this is your reminder. You have your ${rem.title} scheduled for ${rem.reminder_time}.`;
+            soundFX.playAlertTone();
+            
+            // Add notification to HUD chat
+            const reminderChatMsg: ChatMessage = {
+              id: `rem_${Date.now()}_${rem.id}`,
+              role: 'assistant',
+              content: `🔔 **SCHEDULED REMINDER:** ${spokenText}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            setChatMessages(prev => [...prev, reminderChatMsg]);
+
+            // Speak reminder automatically out loud
+            setState('SPEAKING');
+            setActionStatus(`Alert: Reminder for ${rem.title}`);
+            geminiVoiceService.speak(
+              spokenText,
+              () => {
+                setState('SPEAKING');
+              },
+              () => {
+                // When reminder finishes speaking -> open hands-free listening window
+                setState('LISTENING');
+                setIsListening(true);
+                setActionStatus('Listening for follow-up (Hands-Free)...');
+                speechEngine.resumeRecognition();
+                speechEngine.setMode('COMMAND');
+                if (replyTimeoutRef.current) clearTimeout(replyTimeoutRef.current);
+                replyTimeoutRef.current = setTimeout(() => {
+                  setState('IDLE');
+                  setIsListening(false);
+                  setActionStatus('Standby (Say "Jarvis" to wake)');
+                  speechEngine.setMode('WAKE_WORD');
+                }, 8000);
+              }
+            );
+          }
+        }
+      } catch (e) {
+        // Backend offline
+      }
+    }, 3000);
+
+    return () => clearInterval(reminderInterval);
+  }, []);
 
   // Voice Interaction Functions
   const handleGreetingAndListen = () => {

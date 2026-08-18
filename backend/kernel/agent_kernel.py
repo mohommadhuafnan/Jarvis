@@ -310,10 +310,10 @@ Active Plan: {plan.title} (Category: {plan.agent_category})
 
         if tool_used in ["gmail.getUnreadEmails", "email.read", "gmail.searchEmails", "gmail.getEmail", "gmail.createDraft", "gmail.send", "gmail.reply"]:
             if isinstance(tool_result, dict):
-                if tool_result.get("summary"):
-                    return tool_result["summary"]
                 if tool_result.get("connected") is False:
                     return "Boss, your Gmail account isn't connected yet."
+                if tool_result.get("summary"):
+                    return tool_result["summary"]
                 if tool_result.get("snippet"):
                     sender = tool_result.get("from", "Unknown").split("<")[0].strip()
                     return f"The latest email is from {sender} regarding '{tool_result.get('subject')}': {tool_result.get('snippet')}"
@@ -322,17 +322,21 @@ Active Plan: {plan.title} (Category: {plan.agent_category})
 
         if tool_used in ["calendar.listEvents", "calendar.getEvents", "calendar.createEvent"]:
             if isinstance(tool_result, dict):
-                if tool_result.get("summary"):
-                    return tool_result["summary"]
                 if tool_result.get("connected") is False:
                     return "Boss, your Google Calendar isn't connected yet."
+                if tool_result.get("verified") is True:
+                    return f"Done, Boss. Your meeting '{tool_result.get('title', 'Meeting')}' is scheduled and verified on Google Calendar."
+                if tool_result.get("verified") is False and "failed" in tool_result.get("message", "").lower():
+                    return "I couldn't confirm that the meeting was created on Google Calendar, Boss."
+                if tool_result.get("summary"):
+                    return tool_result["summary"]
                 if tool_result.get("message"):
                     return tool_result["message"]
 
         if tool_used in ["tasks.create", "tasks.create_reminder"]:
-            if "reminder" in lower or tool_used == "tasks.create_reminder":
-                return "I've set your reminder, Boss."
-            return "Task created and saved, Boss."
+            if isinstance(tool_result, dict) and tool_result.get("reminder_time"):
+                return f"I've set your reminder for {tool_result.get('reminder_time')}, Boss."
+            return "Task created and armed in background scheduler, Boss."
 
         if tool_used == "computer.openApplication":
             app = ""

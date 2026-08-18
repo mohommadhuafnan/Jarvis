@@ -74,6 +74,8 @@ def create_task(title: str, description: str = "", priority: str = "medium", dea
         "message": f"Task '{title}' has been scheduled and persisted successfully."
     }
 
+from backend.services.scheduler_service import scheduler_service
+
 @registry.register(
     name="tasks.create_reminder",
     description="Set a time-based voice/notification reminder at a specific time (e.g. '8:00 PM').",
@@ -82,25 +84,37 @@ def create_task(title: str, description: str = "", priority: str = "medium", dea
         "type": "object",
         "properties": {
             "reminder_text": {"type": "string", "description": "The reminder message or task to perform"},
-            "reminder_time": {"type": "string", "description": "The exact time or time expression (e.g. '8 PM', '20:00', 'tomorrow at 9 AM')"}
+            "reminder_time": {"type": "string", "description": "The exact time or time expression (e.g. '8 PM', '20:00', 'tomorrow at 9 AM')"},
+            "due_at": {"type": "string", "description": "Optional ISO timestamp when the reminder becomes due"}
         },
         "required": ["reminder_text", "reminder_time"]
     }
 )
-def create_reminder(reminder_text: str, reminder_time: str) -> Dict[str, Any]:
-    """Create a persistent time-based reminder."""
-    res = task_service.create_task(
+def create_reminder(reminder_text: str, reminder_time: str, due_at: Optional[str] = None) -> Dict[str, Any]:
+    """Create a persistent time-based reminder and register with background scheduler."""
+    # 1. Register in scheduler daemon
+    sched_res = scheduler_service.add_reminder(
+        title=reminder_text,
+        reminder_time=reminder_time,
+        due_at=due_at
+    )
+
+    # 2. Also register in task vault
+    task_res = task_service.create_task(
         objective=f"Reminder: {reminder_text}",
         description=f"Trigger voice alert for: {reminder_text}",
         priority="high",
         deadline=reminder_time,
         tags=["reminder", "voice_alert"]
     )
+
     return {
         "success": True,
+        "reminder_id": sched_res.get("id"),
         "reminder_text": reminder_text,
         "reminder_time": reminder_time,
-        "task_id": res.get("taskId"),
+        "due_at": sched_res.get("due_at"),
+        "task_id": task_res.get("taskId"),
         "message": f"Reminder set for {reminder_time}: '{reminder_text}'."
     }
 

@@ -245,3 +245,28 @@ export async function getGoogleAuthLoginUrl() {
   return { auth_url: null };
 }
 
+export async function fetchEmails() {
+  try {
+    const res = await fetch(`${API_BASE}/email/list`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { count: 0, emails: [] };
+}
+
+export async function fetchDueReminders() {
+  try {
+    const res = await fetch(`${API_BASE}/reminders/due`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { count: 0, due_reminders: [] };
+}
+
+export async function fetchCalendarEvents(daysAhead: number = 7) {
+  try {
+    const res = await fetch(`${API_BASE}/calendar/events?days_ahead=${daysAhead}`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return { count: 0, events: [] };
+}
+
+
