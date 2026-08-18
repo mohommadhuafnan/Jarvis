@@ -19,7 +19,7 @@ export const EmailView: React.FC = () => {
       setAuthStatus(status);
 
       if (status.connected) {
-        const data = await fetchEmails();
+        const data: any = await fetchEmails();
         const emailList = data.messages || data.emails || [];
         setEmails(emailList);
         if (emailList.length > 0) setSelectedEmail(emailList[0]);

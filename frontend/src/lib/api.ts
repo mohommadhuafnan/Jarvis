@@ -95,8 +95,11 @@ export async function fetchCalendar() {
 
 export async function fetchEmails() {
   try {
-    const res = await fetch(`${API_BASE}/emails`);
-    if (res.ok) return await res.json();
+    const res = await fetch(`${API_BASE}/email/list`);
+    if (res.ok) {
+      const data = await res.json();
+      return { total: data.count || (data.emails ? data.emails.length : 0), unread_count: data.count || 0, emails: data.emails || [] };
+    }
   } catch (e) {}
   return { total: 0, unread_count: 0, emails: [] };
 }
@@ -243,14 +246,6 @@ export async function getGoogleAuthLoginUrl() {
     if (res.ok) return await res.json();
   } catch (e) {}
   return { auth_url: null };
-}
-
-export async function fetchEmails() {
-  try {
-    const res = await fetch(`${API_BASE}/email/list`);
-    if (res.ok) return await res.json();
-  } catch (e) {}
-  return { count: 0, emails: [] };
 }
 
 export async function fetchDueReminders() {
