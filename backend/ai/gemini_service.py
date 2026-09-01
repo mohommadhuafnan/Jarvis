@@ -32,11 +32,11 @@ class GeminiService:
         self.api_key = new_key
 
     def _get_system_instruction(self) -> str:
-        return f"""You are {ASSISTANT_NAME}, an advanced personal AI operating system and sci-fi command center assistant.
-You speak crisply, confidently, intelligently, and respectfully to your commander, {USER_NAME}.
-Tone: Highly efficient, sophisticated, futuristic, concise, and helpful.
+        return f"""You are {ASSISTANT_NAME}, an advanced personal AI desktop assistant.
+You speak crisply, confidently, intelligently, and conversationally in 1-2 clear sentences.
+Always address the user as 'Boss' or '{USER_NAME}'.
+Tone: Highly efficient, sophisticated, concise, and helpful.
 Provide a clear, natural voice-friendly summary of the result.
-Avoid robotic cliches; sound like a state-of-the-art AI command system.
 If the user speaks in Tamil or Sinhala, detect the language and respond fluently in the same language.
 """
 
@@ -210,9 +210,9 @@ If the user speaks in Tamil or Sinhala, detect the language and respond fluently
         elif tool_used == "code.generate":
             reply = "I've generated the requested Python algorithm in your Code Assistant workspace. It is ready for sandboxed execution."
         elif any(w in lower for w in ["hello", "hi", "hey", "good morning", "good evening", "wake up"]):
-            reply = f"Good evening, Commander {USER_NAME}. JARVIS AI Core is online and ready for your command."
+            reply = f"Good evening, {USER_NAME}. JARVIS AI is online and ready for your command."
         else:
-            reply = f"Understood, Commander. Processing request: '{user_input}'. All neural channels active."
+            reply = f"Understood. Processing request: '{user_input}'."
 
         return {
             "reply": reply,

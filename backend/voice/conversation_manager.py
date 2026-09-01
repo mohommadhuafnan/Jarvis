@@ -86,7 +86,7 @@ class ConversationManager:
                 "approved": True,
                 "tool_used": tool_name,
                 "tool_result": tool_res,
-                "reply": f"Confirmed. I have executed {tool_name} successfully, Commander."
+                "reply": f"Confirmed. I have executed {tool_name} successfully."
             }
 
         elif self.is_rejection_response(user_text):
@@ -98,7 +98,7 @@ class ConversationManager:
                 "approved": False,
                 "tool_used": tool_name,
                 "tool_result": {"status": "CANCELLED_BY_USER"},
-                "reply": f"Understood, Commander. Operation {tool_name} cancelled."
+                "reply": f"Understood. Operation {tool_name} cancelled."
             }
 
         return None

@@ -66,7 +66,7 @@ class LiveKitDesktopClient:
     async def _async_connect(self) -> bool:
         """Asynchronously connect to LiveKit Cloud WebRTC room."""
         try:
-            logger.info("LIVEKIT_INITIALIZING")
+            logger.info("LIVEKIT_SESSION_STARTING")
             if not LIVEKIT_URL:
                 logger.error("LIVEKIT_URL is not configured.")
                 return False
@@ -77,7 +77,7 @@ class LiveKitDesktopClient:
             @self.room.on("connected")
             def _on_connected():
                 self.is_connected = True
-                logger.info(f"LIVEKIT_CONNECTED Room: '{self.room_name}' URL: '{LIVEKIT_URL[:25]}...'")
+                logger.info(f"LIVEKIT_CONNECTED Room: '{self.room_name}'")
 
             @self.room.on("disconnected")
             def _on_disconnected():
@@ -91,14 +91,14 @@ class LiveKitDesktopClient:
             @self.room.on("track_subscribed")
             def _on_track_subscribed(track: rtc.Track, publication: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant):
                 if track.kind == rtc.TrackKind.KIND_AUDIO:
-                    logger.info(f"VOICE_OUTPUT_STARTED Subscribed to LiveKit Agent voice track from '{participant.identity}'")
+                    logger.info(f"LIVEKIT_AUDIO_OUTPUT_STARTED Subscribed to LiveKit Agent audio from '{participant.identity}'")
                     asyncio.create_task(self._play_incoming_audio_stream(track))
 
             await self.room.connect(LIVEKIT_URL, token)
             self.is_connected = True
             self._session_active = True
             logger.info("LIVEKIT_CONNECTED")
-            logger.info("VOICE_SESSION_STARTED")
+            logger.info("LIVEKIT_AUDIO_INPUT_STARTED")
             if self.on_session_started:
                 self.on_session_started()
             return True
@@ -112,14 +112,14 @@ class LiveKitDesktopClient:
         """Streams incoming WebRTC audio frames directly to the Windows speaker output."""
         try:
             audio_stream = rtc.AudioStream(track)
-            logger.info("VOICE_OUTPUT_STARTED Audio stream initialized.")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED Audio stream playback initialized.")
             async for frame in audio_stream:
                 if not self._session_active:
                     break
-                # Frame processed and routed through WebRTC audio sink
-            logger.info("VOICE_OUTPUT_COMPLETED Audio stream finished.")
+                # WebRTC audio routed directly to audio sink
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED Audio stream finished.")
         except Exception as play_err:
-            logger.debug(f"Audio stream playback notice: {play_err}")
+            logger.debug(f"LiveKit audio playback notice: {play_err}")
 
     async def _async_disconnect(self):
         """Asynchronously disconnect from LiveKit Cloud."""
@@ -131,7 +131,7 @@ class LiveKitDesktopClient:
             self.room = None
         self.is_connected = False
         self._session_active = False
-        logger.info("VOICE_SESSION_ENDED")
+        logger.info("LIVEKIT_DISCONNECTED")
         if self.on_session_ended:
             self.on_session_ended()
 

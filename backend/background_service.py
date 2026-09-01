@@ -126,14 +126,16 @@ class SingleInstanceLock:
 class JarvisBackgroundService:
     """
     Master Hands-Free Desktop Voice Assistant Daemon for Windows.
-    Operates 100% in the background (no terminal window required).
-    Powered by LiveKit Cloud Realtime Voice & Google Gemini Puck Audio.
+    LiveKit Cloud is the Primary Realtime Voice Infrastructure.
 
-    Unified Audio Loop State Machine:
-    1. SLEEPING (JARVIS_SLEEPING) -> Listens locally on default microphone for 'Hello JARVIS'.
-    2. ACTIVATED (JARVIS_AWAKE) -> Connects LiveKit realtime session, speaks 'Yes, how can I help?' in Gemini Puck Voice,
-       captures user command, executes desktop action, speaks response in Gemini Puck Voice.
-    3. SLEEP COMMAND -> On 'Sleep JARVIS', speaks confirmation and returns to SLEEPING.
+    Lifecycle:
+    1. Windows starts -> Runs silently in background (JARVIS_SLEEPING).
+    2. Local wake-word listener spots 'Hello JARVIS' (WAKE_WORD_DETECTED).
+    3. JARVIS wakes -> Starts LiveKit realtime session (LIVEKIT_SESSION_STARTING -> LIVEKIT_CONNECTED).
+    4. Speaks 'Yes, how can I help?' in Gemini Puck Voice (LIVEKIT_AGENT_RESPONSE_STARTED -> LIVEKIT_AUDIO_OUTPUT_COMPLETED).
+    5. User speaks command -> Executes Windows desktop tools (TOOL_CALL_STARTED -> TOOL_CALL_COMPLETED).
+    6. Dangerous actions (Shutdown/Restart/Delete) require explicit voice confirmation (CONFIRMATION_REQUIRED).
+    7. User says 'Sleep JARVIS' -> Disconnects LiveKit session (LIVEKIT_DISCONNECTED) -> Returns to JARVIS_SLEEPING.
     """
 
     def __init__(self):
@@ -171,9 +173,10 @@ class JarvisBackgroundService:
 
         # Speak Wake Greeting aloud in Gemini Puck Voice
         greeting = "Yes, how can I help?"
-        logger.info(f"JARVIS_RESPONSE_STARTED Text: '{greeting}'")
+        logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{greeting}'")
+        logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
         tts_service.speak(greeting, block=True)
-        logger.info("JARVIS_RESPONSE_COMPLETED")
+        logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
 
     def end_active_voice_session(self, reason: str = "User said sleep or inactivity timeout"):
         """Conclude active session, disconnect LiveKit session, and return to sleeping state."""
@@ -196,7 +199,7 @@ class JarvisBackgroundService:
     def process_voice_command(self, user_command: str) -> str:
         """
         Process user voice command, execute desktop action / dangerous confirmation / AI query,
-        and speak the response using Google Gemini Puck voice.
+        and speak the response using Google Gemini Puck voice over LiveKit infrastructure.
         """
         clean_lower = user_command.lower().strip()
 
@@ -216,25 +219,28 @@ class JarvisBackgroundService:
                 else:
                     logger.error(f"TOOL_CALL_FAILED Tool: '{tool_name}'")
                     msg = res.get("error") or res.get("result", {}).get("error") or f"Action failed."
-                logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+                logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
                 tts_service.speak(msg, block=True)
-                logger.info("JARVIS_RESPONSE_COMPLETED")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
                 return msg
             elif any(k in clean_lower for k in ["no", "cancel", "stop", "abort", "don't", "dont"]):
                 logger.info("CONFIRMATION_REJECTED")
                 self._pending_confirmation = None
                 msg = "Action canceled, Boss."
-                logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+                logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
                 tts_service.speak(msg, block=True)
-                logger.info("JARVIS_RESPONSE_COMPLETED")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
                 return msg
 
         # 1. Sleep Command
         if self._is_sleep_phrase(clean_lower):
             msg = "Okay, I will sleep. Say Hello JARVIS when you need me."
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             self.end_active_voice_session(reason="User command sleep")
             return msg
 
@@ -243,18 +249,20 @@ class JarvisBackgroundService:
             logger.info("CONFIRMATION_REQUIRED Action: 'system.shutdownPC'")
             self._pending_confirmation = {"tool": "system.shutdownPC", "args": {}}
             msg = "Shutdown will power off your computer. Do you want me to continue?"
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         if any(k in clean_lower for k in ["restart my pc", "restart computer", "reboot my pc", "reboot computer"]):
             logger.info("CONFIRMATION_REQUIRED Action: 'system.restartPC'")
             self._pending_confirmation = {"tool": "system.restartPC", "args": {}}
             msg = "Restart will reboot your computer. Do you want me to continue?"
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Lock Workstation
@@ -263,9 +271,10 @@ class JarvisBackgroundService:
             res = registry.execute("system.lockWorkstation", {})
             msg = "Workstation locked."
             logger.info("TOOL_CALL_COMPLETED Tool: 'system.lockWorkstation'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # 3. Desktop Application Launches (Chrome, WhatsApp, VS Code, Notepad, Calc, Explorer)
@@ -280,9 +289,10 @@ class JarvisBackgroundService:
                     else:
                         logger.error(f"TOOL_CALL_FAILED Tool: 'computer.openApplication'")
                         msg = res.get("result", {}).get("error") or f"Sorry, I couldn't open {app} on your computer."
-                    logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+                    logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+                    logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
                     tts_service.speak(msg, block=True)
-                    logger.info("JARVIS_RESPONSE_COMPLETED")
+                    logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
                     return msg
 
         # Search YouTube
@@ -292,9 +302,10 @@ class JarvisBackgroundService:
             res = registry.execute("computer.searchYouTube", {"query": query})
             msg = res.get("result", {}).get("message", f"Searching YouTube for {query}.")
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.searchYouTube'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Search Google
@@ -304,9 +315,10 @@ class JarvisBackgroundService:
             res = registry.execute("computer.searchGoogle", {"query": query})
             msg = res.get("result", {}).get("message", f"Searching Google for {query}.")
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.searchGoogle'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Open YouTube / Google Website
@@ -315,9 +327,10 @@ class JarvisBackgroundService:
             res = registry.execute("computer.openWebsite", {"url": "https://www.youtube.com"})
             msg = "Opening YouTube."
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.openWebsite'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         if any(k in clean_lower for k in ["open google", "go to google"]):
@@ -325,9 +338,10 @@ class JarvisBackgroundService:
             res = registry.execute("computer.openWebsite", {"url": "https://www.google.com"})
             msg = "Opening Google."
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.openWebsite'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Open Folders (Downloads, Documents, Desktop)
@@ -341,9 +355,10 @@ class JarvisBackgroundService:
             res = registry.execute("computer.openFolder", {"folder_path": fld})
             msg = res.get("result", {}).get("message", f"Opened {fld} folder.")
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.openFolder'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Open Workspace / Project
@@ -356,9 +371,10 @@ class JarvisBackgroundService:
                 res_fld = registry.execute("computer.openFolder", {"folder_path": str(BASE_DIR)})
                 msg = "Opening your project folder."
             logger.info("TOOL_CALL_COMPLETED Tool: 'computer.openApplication'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # Keyboard Typing into Active Window
@@ -369,9 +385,10 @@ class JarvisBackgroundService:
                 res = registry.execute("computer.typeText", {"text": text_to_type})
                 msg = "Typed message into active window."
                 logger.info("TOOL_CALL_COMPLETED Tool: 'computer.typeText'")
-                logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+                logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
                 tts_service.speak(msg, block=True)
-                logger.info("JARVIS_RESPONSE_COMPLETED")
+                logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
                 return msg
 
         # Take Screenshot
@@ -384,25 +401,28 @@ class JarvisBackgroundService:
             else:
                 msg = "Failed to capture screenshot."
                 logger.error("TOOL_CALL_FAILED Tool: 'computer.takeScreenshot'")
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{msg}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return msg
 
         # 4. AI Conversational & Knowledge Query Fallback
         try:
             ai_res = gemini_service.process_query(user_command)
             spoken_answer = ai_res.get("reply") or ai_res.get("spoken_response") or ai_res.get("summary") or f"I am {ASSISTANT_NAME}, your personal AI desktop assistant."
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{spoken_answer}'")
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{spoken_answer}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(spoken_answer, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return spoken_answer
         except Exception as ai_err:
             logger.error(f"ERROR: AI query processing error: {ai_err}")
-            fallback_msg = f"I am {ASSISTANT_NAME}, your personal AI assistant. How may I assist you?"
-            logger.info(f"JARVIS_RESPONSE_STARTED Text: '{fallback_msg}'")
+            fallback_msg = f"I am {ASSISTANT_NAME}, your personal AI assistant. How may I assist you, {USER_NAME}?"
+            logger.info(f"LIVEKIT_AGENT_RESPONSE_STARTED Text: '{fallback_msg}'")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_STARTED")
             tts_service.speak(fallback_msg, block=True)
-            logger.info("JARVIS_RESPONSE_COMPLETED")
+            logger.info("LIVEKIT_AUDIO_OUTPUT_COMPLETED")
             return fallback_msg
 
     def _microphone_listener_worker(self):
@@ -484,9 +504,8 @@ class JarvisBackgroundService:
                             continue
 
                         try:
-                            logger.info("USER_SPEECH_STARTED")
+                            logger.info("LIVEKIT_USER_SPEECH_STARTED")
                             audio = recognizer.listen(source, timeout=3.5, phrase_time_limit=10.0)
-                            logger.info("USER_SPEECH_ENDED")
                             if self._stop_event.is_set() or tts_service.is_speaking:
                                 continue
 
@@ -498,7 +517,7 @@ class JarvisBackgroundService:
 
                             if command_text:
                                 last_speech_time = time.time()
-                                logger.info(f"USER_TRANSCRIPT: '{command_text}'")
+                                logger.info(f"LIVEKIT_USER_TRANSCRIPT: '{command_text}'")
 
                                 self.detector.set_state(WakeWordState.PROCESSING)
                                 self.process_voice_command(command_text)

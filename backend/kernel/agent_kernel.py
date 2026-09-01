@@ -91,6 +91,19 @@ class AgentKernel:
             content=user_clean
         )
 
+        # 0. Check for Emergency Stop / Stop command
+        if any(w in lower for w in ["emergency stop", "jarvis stop", "jarvis, stop", "halt all"]):
+            self.trigger_emergency_stop()
+            reply = "Emergency stop activated, Boss. All active operations halted and ready for your command."
+            conversation_service.add_message(conversation_id=conv_id, role="assistant", content=reply)
+            return {
+                "reply": reply,
+                "tool_used": "emergency.stop",
+                "tool_result": {"status": "STOPPED"},
+                "action_plan": ["Emergency Stop Triggered"],
+                "state": "IDLE"
+            }
+
         # 1. Direct Memory Recall / Working On Check
         relevant_memories = []
         if any(w in lower for w in ["what is my", "what's my", "who is", "remember", "project", "working on", "preference", "what did you do", "continue"]):
@@ -102,7 +115,7 @@ class AgentKernel:
         if "what did you do" in lower or "recent actions" in lower or "audit" in lower:
             recent_logs = audit_service.get_audit_logs(limit=5)
             log_summary = "\n".join([f"- {l.get('agent', 'Agent')}: {l.get('tool', 'Action')} ({l.get('status', 'done')})" for l in recent_logs])
-            reply = f"Here is a summary of recent operations, Commander:\n{log_summary}" if recent_logs else "No recent operations recorded in the audit logs, Commander."
+            reply = f"Here is a summary of recent operations, Boss:\n{log_summary}" if recent_logs else "No recent operations recorded in the audit logs, Boss."
             conversation_service.add_message(conversation_id=conv_id, role="assistant", content=reply)
             return {
                 "reply": reply,
@@ -160,7 +173,7 @@ class AgentKernel:
                         "arguments": step.arguments,
                         "risk_level": risk.value if hasattr(risk, "value") else str(risk),
                         "reason": reason,
-                        "message": f"Commander, confirmation required to execute {step.tool_name}."
+                        "message": f"Confirmation required to execute {step.tool_name}."
                     }
                     tool_executed = step.tool_name
                     tool_result = {"status": "CONFIRMATION_REQUIRED", "details": pending_confirmation}
