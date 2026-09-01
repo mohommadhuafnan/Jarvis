@@ -472,4 +472,8 @@ class TaskPlanner:
         ]
         return TaskPlan(title="Neural Inference", agent_category="system", is_multi_step=False, steps=steps)
 
+    def plan(self, user_command: str) -> TaskPlan:
+        return self.plan_task(user_command)
+
 planner = TaskPlanner()
+task_planner = planner

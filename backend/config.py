@@ -44,6 +44,9 @@ GOOGLE_TOKEN_URI = os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/
 # Assistant Identity & Voice Config
 ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "JARVIS")
 WAKE_WORD = os.getenv("WAKE_WORD", "Jarvis")
+WAKE_PHRASE = os.getenv("WAKE_PHRASE", "Hello JARVIS")
+WAKE_WORD_SENSITIVITY = float(os.getenv("WAKE_WORD_SENSITIVITY", "0.5"))
+INACTIVITY_TIMEOUT_SECS = int(os.getenv("INACTIVITY_TIMEOUT_SECS", "30"))
 USER_NAME = os.getenv("USER_NAME", "RAVIT")
 LANGUAGE = os.getenv("LANGUAGE", "en") # 'en', 'ta', 'si'
 DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "Puck")
@@ -51,6 +54,12 @@ DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "Puck")
 # Workspace Path for sandboxed file management & code execution
 WORKSPACE_DIR = BASE_DIR / "workspace"
 WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Logs & Single-Instance Lock Paths
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE_PATH = LOGS_DIR / "jarvis.log"
+INSTANCE_LOCK_PATH = BASE_DIR / "jarvis_instance.lock"
 
 # Database
 DB_PATH = BASE_DIR / "jarvis_data.db"
