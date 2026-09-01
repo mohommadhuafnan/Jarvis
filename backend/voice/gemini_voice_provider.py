@@ -3,7 +3,7 @@ import wave
 import base64
 import requests
 from typing import Dict, Any, Optional
-from backend.config import GEMINI_API_KEY
+from backend.config import GEMINI_API_KEY, DEFAULT_VOICE
 from backend.voice.base import BaseVoiceProvider
 
 def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, num_channels: int = 1, sample_width: int = 2) -> bytes:
@@ -19,10 +19,10 @@ def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, num_channels: int = 1,
 class GeminiVoiceProvider(BaseVoiceProvider):
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or GEMINI_API_KEY
-        self.tts_model = "gemini-2.5-flash-preview-tts"
+        self.tts_models = ["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
         self.stt_model = "gemini-flash-latest"
 
-    def synthesize(self, text: str, voice_name: str = "Puck") -> Dict[str, Any]:
+    def synthesize(self, text: str, voice_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate natural spoken audio using Google Gemini native TTS capabilities.
         Voices: 'Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'
@@ -30,7 +30,7 @@ class GeminiVoiceProvider(BaseVoiceProvider):
         if not self.api_key:
             return {"success": False, "error": "No Gemini API key configured"}
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.tts_model}:generateContent"
+        selected_voice = voice_name or DEFAULT_VOICE or "Puck"
         headers = {
             "Content-Type": "application/json",
             "X-goog-api-key": self.api_key
@@ -46,40 +46,41 @@ class GeminiVoiceProvider(BaseVoiceProvider):
                 "speech_config": {
                     "voice_config": {
                         "prebuilt_voice_config": {
-                            "voice_name": voice_name
+                            "voice_name": selected_voice
                         }
                     }
                 }
             }
         }
 
-        try:
-            res = requests.post(url, headers=headers, json=payload, timeout=3)
-            if res.status_code == 200:
-                data = res.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    for p in parts:
-                        if "inlineData" in p:
-                            raw_b64 = p["inlineData"]["data"]
-                            pcm_bytes = base64.b64decode(raw_b64)
-                            # Convert raw 24kHz PCM to standard browser-playable WAV
-                            wav_bytes = pcm_to_wav(pcm_bytes, sample_rate=24000)
-                            wav_b64 = base64.b64encode(wav_bytes).decode("utf-8")
-                            return {
-                                "success": True,
-                                "mime_type": "audio/wav",
-                                "audio_data": f"data:audio/wav;base64,{wav_b64}",
-                                "voice": voice_name,
-                                "provider": "Google Gemini Live Audio"
-                            }
-            return {
-                "success": False,
-                "error": f"Gemini TTS returned status {res.status_code}: {res.text[:150]}"
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        for model in self.tts_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            try:
+                res = requests.post(url, headers=headers, json=payload, timeout=8)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for p in parts:
+                            if "inlineData" in p:
+                                raw_b64 = p["inlineData"]["data"]
+                                pcm_bytes = base64.b64decode(raw_b64)
+                                # Convert raw 24kHz PCM to standard browser/windows playable WAV
+                                wav_bytes = pcm_to_wav(pcm_bytes, sample_rate=24000)
+                                wav_b64 = base64.b64encode(wav_bytes).decode("utf-8")
+                                return {
+                                    "success": True,
+                                    "mime_type": "audio/wav",
+                                    "audio_data": f"data:audio/wav;base64,{wav_b64}",
+                                    "wav_bytes": wav_bytes,
+                                    "voice": selected_voice,
+                                    "provider": "Google Gemini Voice (Puck)"
+                                }
+            except Exception as e:
+                continue
+
+        return {"success": False, "error": "Gemini TTS synthesis request failed."}
 
     def transcribe(self, audio_data_base64: str) -> Dict[str, Any]:
         """
