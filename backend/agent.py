@@ -86,19 +86,69 @@ class JarvisVoiceAgent(Agent):
     # -------------------------------------------------------------
     @function_tool()
     async def open_application(self, context: RunContext, app_name: str) -> Dict[str, Any]:
-        """Launch or open a native desktop application on the user's computer.
+        """Launch or open a native desktop application on the user's computer (e.g. Chrome, WhatsApp, VS Code, Notepad, Calculator, File Explorer).
 
         Args:
-            app_name: Name of the application (e.g., 'Chrome', 'Notepad', 'VS Code', 'Calculator', 'Explorer', 'WhatsApp').
+            app_name: Name of the application (e.g., 'Chrome', 'WhatsApp', 'Notepad', 'VS Code', 'Calculator', 'Explorer').
         """
         logger.info(f"Tool Call: open_application('{app_name}')")
         return execute_jarvis_tool("computer.openApplication", {"app_name": app_name})
 
     @function_tool()
+    async def close_application(self, context: RunContext, app_name: str) -> Dict[str, Any]:
+        """Close a running desktop application or window.
+
+        Args:
+            app_name: Name or window title of the application to close.
+        """
+        logger.info(f"Tool Call: close_application('{app_name}')")
+        return execute_jarvis_tool("computer.closeApplication", {"app_name": app_name})
+
+    @function_tool()
+    async def open_website(self, context: RunContext, url: str) -> Dict[str, Any]:
+        """Open a website or web service in the user's default desktop browser (e.g. YouTube, Google, GitHub, WhatsApp Web).
+
+        Args:
+            url: The website URL or domain to open (e.g. 'https://youtube.com', 'https://google.com', 'https://web.whatsapp.com').
+        """
+        logger.info(f"Tool Call: open_website('{url}')")
+        return execute_jarvis_tool("computer.openWebsite", {"url": url})
+
+    @function_tool()
+    async def search_google(self, context: RunContext, query: str) -> Dict[str, Any]:
+        """Search Google and open the search results page in the user's desktop web browser.
+
+        Args:
+            query: The search query (e.g. 'React tutorials', 'Python documentation').
+        """
+        logger.info(f"Tool Call: search_google('{query}')")
+        return execute_jarvis_tool("computer.searchGoogle", {"query": query})
+
+    @function_tool()
+    async def search_youtube(self, context: RunContext, query: str) -> Dict[str, Any]:
+        """Search YouTube and display video search results in the user's desktop web browser.
+
+        Args:
+            query: The video search query (e.g. 'Python tutorials', 'lo-fi beats').
+        """
+        logger.info(f"Tool Call: search_youtube('{query}')")
+        return execute_jarvis_tool("computer.searchYouTube", {"query": query})
+
+    @function_tool()
+    async def open_folder(self, context: RunContext, folder_path: str) -> Dict[str, Any]:
+        """Open a local folder on Windows File Explorer (e.g. 'downloads', 'documents', 'desktop', 'pictures').
+
+        Args:
+            folder_path: Name of folder or path (e.g. 'downloads', 'documents', 'desktop').
+        """
+        logger.info(f"Tool Call: open_folder('{folder_path}')")
+        return execute_jarvis_tool("computer.openFolder", {"folder_path": folder_path})
+
+    @function_tool()
     async def take_screenshot(self, context: RunContext) -> Dict[str, Any]:
         """Capture a real-time screenshot of the user's computer screen."""
         logger.info("Tool Call: take_screenshot()")
-        return execute_jarvis_tool("computer.screenshot", {})
+        return execute_jarvis_tool("computer.takeScreenshot", {})
 
     @function_tool()
     async def press_keyboard_keys(self, context: RunContext, keys: List[str]) -> Dict[str, Any]:
@@ -108,7 +158,27 @@ class JarvisVoiceAgent(Agent):
             keys: List of keys to press together (e.g. ['ctrl', 'c'], ['alt', 'tab'], ['win', 'd']).
         """
         logger.info(f"Tool Call: press_keyboard_keys({keys})")
-        return execute_jarvis_tool("computer.keyCombination", {"keys": keys})
+        return execute_jarvis_tool("computer.hotkey", {"keys": keys})
+
+    @function_tool()
+    async def type_text(self, context: RunContext, text: str) -> Dict[str, Any]:
+        """Type text into the currently focused window on the user's computer.
+
+        Args:
+            text: The exact text string to type.
+        """
+        logger.info(f"Tool Call: type_text('{text}')")
+        return execute_jarvis_tool("computer.typeText", {"text": text})
+
+    @function_tool()
+    async def press_key(self, context: RunContext, key: str) -> Dict[str, Any]:
+        """Press a single keyboard key (e.g. 'enter', 'space', 'esc', 'tab', 'backspace').
+
+        Args:
+            key: Name of the key to press.
+        """
+        logger.info(f"Tool Call: press_key('{key}')")
+        return execute_jarvis_tool("computer.pressKey", {"key": key})
 
     # -------------------------------------------------------------
     # WEB & BROWSER AUTOMATION TOOLS
@@ -121,17 +191,17 @@ class JarvisVoiceAgent(Agent):
             query: The search query to look up on the web.
         """
         logger.info(f"Tool Call: search_web('{query}')")
-        return execute_jarvis_tool("browser.search", {"query": query})
+        return execute_jarvis_tool("web.search", {"query": query})
 
     @function_tool()
     async def open_browser_url(self, context: RunContext, url: str) -> Dict[str, Any]:
-        """Navigate to a specific website or URL in the browser.
+        """Navigate to a specific website or URL in the desktop browser.
 
         Args:
             url: The web URL to open (e.g. 'https://github.com', 'https://google.com').
         """
         logger.info(f"Tool Call: open_browser_url('{url}')")
-        return execute_jarvis_tool("browser.open", {"url": url})
+        return execute_jarvis_tool("computer.openWebsite", {"url": url})
 
     # -------------------------------------------------------------
     # GOOGLE CALENDAR TOOLS

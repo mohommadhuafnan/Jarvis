@@ -287,7 +287,50 @@ class TaskPlanner:
             ]
             return TaskPlan(title="Cross-Agent: Calendar & Gmail Intelligence Correlation", agent_category="google", is_multi_step=True, steps=steps)
 
-        # 2. Browser Tab & Navigation Intents
+        # 2. Desktop Web Search & Website Navigation Intents
+        if any(w in lower for w in ["search youtube for", "youtube search", "find on youtube"]):
+            query = re.sub(r'.*(?:search\s+youtube\s+for|youtube\s+search|find\s+on\s+youtube)\s+', '', user_command, flags=re.I).strip()
+            steps = [
+                TaskStep(id=1, description=f"Searching YouTube for '{query}' in desktop browser", tool_name="computer.searchYouTube", arguments={"query": query})
+            ]
+            return TaskPlan(title=f"YouTube: Search '{query}'", agent_category="computer", is_multi_step=False, steps=steps)
+
+        if any(w in lower for w in ["search google for", "google search for", "search for", "google for"]):
+            query = re.sub(r'.*(?:search\s+google\s+for|google\s+search\s+for|search\s+for|google\s+for)\s+', '', user_command, flags=re.I).strip()
+            steps = [
+                TaskStep(id=1, description=f"Searching Google for '{query}' in desktop browser", tool_name="computer.searchGoogle", arguments={"query": query})
+            ]
+            return TaskPlan(title=f"Google: Search '{query}'", agent_category="computer", is_multi_step=False, steps=steps)
+
+        if any(w in lower for w in ["open youtube", "go to youtube", "launch youtube", "watch youtube"]):
+            steps = [
+                TaskStep(id=1, description="Opening YouTube in desktop web browser", tool_name="computer.openWebsite", arguments={"url": "https://www.youtube.com"})
+            ]
+            return TaskPlan(title="Browser: Open YouTube", agent_category="computer", is_multi_step=False, steps=steps)
+
+        if any(w in lower for w in ["open google", "go to google"]):
+            steps = [
+                TaskStep(id=1, description="Opening Google in desktop web browser", tool_name="computer.openWebsite", arguments={"url": "https://www.google.com"})
+            ]
+            return TaskPlan(title="Browser: Open Google", agent_category="computer", is_multi_step=False, steps=steps)
+
+        if any(w in lower for w in ["open github", "go to github"]):
+            steps = [
+                TaskStep(id=1, description="Opening GitHub in desktop web browser", tool_name="computer.openWebsite", arguments={"url": "https://github.com"})
+            ]
+            return TaskPlan(title="Browser: Open GitHub", agent_category="computer", is_multi_step=False, steps=steps)
+
+        if any(w in lower for w in ["open downloads", "downloads folder", "my downloads", "open documents", "documents folder", "open desktop", "desktop folder"]):
+            target_folder = "downloads"
+            for fld in ["downloads", "documents", "desktop", "pictures", "videos", "music"]:
+                if fld in lower:
+                    target_folder = fld
+                    break
+            steps = [
+                TaskStep(id=1, description=f"Opening '{target_folder}' in Windows File Explorer", tool_name="computer.openFolder", arguments={"folder_path": target_folder})
+            ]
+            return TaskPlan(title=f"Explorer: Open {target_folder.capitalize()} Folder", agent_category="computer", is_multi_step=False, steps=steps)
+
         if any(w in lower for w in ["new tab", "open another tab", "another tab", "open tab"]):
             steps = [
                 TaskStep(id=1, description="Allocating new browser page in context", tool_name="browser.newTab", arguments={}),
@@ -309,15 +352,13 @@ class TaskPlanner:
             ]
             return TaskPlan(title="Browser: Read Active Web Page", agent_category="browser", is_multi_step=False, steps=steps)
 
-        if any(w in lower for w in ["http://", "https://", ".com", ".org", ".edu", "open website", "open google", "open browser"]):
+        if any(w in lower for w in ["http://", "https://", ".com", ".org", ".edu", "open website", "open browser"]):
             raw_url = re.search(r'https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|org|io|net|edu)', user_command)
-            target_url = raw_url.group(0) if raw_url else ("google.com" if "google" in lower else "google.com")
+            target_url = raw_url.group(0) if raw_url else "https://www.google.com"
             steps = [
-                TaskStep(id=1, description=f"Launching Playwright browser engine", tool_name=None),
-                TaskStep(id=2, description=f"Navigating to {target_url}", tool_name="browser.open", arguments={"url": target_url}),
-                TaskStep(id=3, description="Waiting for DOM load event", tool_name=None)
+                TaskStep(id=1, description=f"Opening {target_url} in desktop web browser", tool_name="computer.openWebsite", arguments={"url": target_url})
             ]
-            return TaskPlan(title=f"Browser: Navigate to {target_url}", agent_category="browser", is_multi_step=False, steps=steps)
+            return TaskPlan(title=f"Browser: Open {target_url}", agent_category="computer", is_multi_step=False, steps=steps)
 
         # 3. Screen Vision Intent
         if any(w in lower for w in ["screenshot", "take a screenshot", "capture screen"]):

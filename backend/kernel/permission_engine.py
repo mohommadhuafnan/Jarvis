@@ -1,4 +1,5 @@
 from typing import Dict, Any, Tuple
+import backend.tools
 from backend.tools.registry import RiskLevel, registry
 
 class PermissionEngine:

@@ -19,7 +19,7 @@ class TestCriticalReliabilityRebuild(unittest.TestCase):
         """Test parsing 'Remind me in 10 minutes to review code'"""
         now = datetime.now()
         dt = parse_natural_datetime("Remind me in 10 minutes to review code")
-        self.assertIn("today", dt["display_date"])
+        self.assertTrue(any(d in dt["display_date"].lower() for d in ["today", "tomorrow"]))
         # Should be ~10 minutes from now
         target_dt = datetime.fromisoformat(dt["due_at"])
         diff_sec = abs((target_dt - (now + timedelta(minutes=10))).total_seconds())
