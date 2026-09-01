@@ -27,10 +27,10 @@ class StartupService:
     def enable_startup(self) -> Dict[str, Any]:
         """Enable auto-start on Windows user login."""
         try:
-            self.startup_folder.mkdir(parents=True, exist_ok=True)
+            python_exe = sys.executable
             bat_content = f"""@echo off
 cd /d "{self.base_dir}"
-start "" /b python backend/background_service.py
+start "" /b "{python_exe}" backend/background_service.py
 """
             with open(self.shortcut_bat, "w") as f:
                 f.write(bat_content)

@@ -51,6 +51,8 @@ jarvis_data.db
 
 # Logs & temporary files
 *.log
+*.lock
+jarvis_instance.lock
 logs/
 temp/
 tmp/
