@@ -36,6 +36,7 @@ from backend.config import (
     USER_NAME,
     DEFAULT_VOICE,
     DEFAULT_MODEL,
+    LIVE_MODEL,
 )
 from backend.voice.livekit_tools import execute_jarvis_tool
 from backend.services.memory_service import memory_service
@@ -301,7 +302,8 @@ async def jarvis_agent_session(ctx: JobContext):
     """
     logger.info(f"[JARVIS Agent] Starting session in room: {ctx.room.name}")
 
-    model_name = DEFAULT_MODEL if "gemini" in DEFAULT_MODEL else "gemini-2.5-flash"
+    model_name = LIVE_MODEL or "gemini-3.1-flash-live-preview"
+    logger.info(f"[JARVIS Agent] Initializing Gemini Live RealtimeModel: {model_name}")
     
     # Initialize Realtime Gemini model
     realtime_model = google.realtime.RealtimeModel(

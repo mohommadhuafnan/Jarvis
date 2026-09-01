@@ -27,6 +27,7 @@ if GEMINI_API_KEY and not os.environ.get("GEMINI_API_KEY"):
     os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
+LIVE_MODEL = os.getenv("LIVE_MODEL", os.getenv("DEFAULT_LIVE_MODEL", "gemini-3.1-flash-live-preview"))
 
 # LiveKit Cloud Realtime Voice Configuration (SERVER-ONLY: Never expose secrets to frontend)
 LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")

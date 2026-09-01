@@ -62,6 +62,10 @@ def run_diagnostics():
     checks.append(("LiveKit API Key", mask_secret(LIVEKIT_API_KEY), bool(LIVEKIT_API_KEY)))
     checks.append(("LiveKit API Secret", mask_secret(LIVEKIT_API_SECRET), bool(LIVEKIT_API_SECRET)))
     checks.append(("Google / Gemini API Key", mask_secret(GOOGLE_API_KEY or GEMINI_API_KEY), gemini_ok))
+    
+    from backend.config import DEFAULT_MODEL, LIVE_MODEL
+    checks.append(("General AI Model", DEFAULT_MODEL, bool(DEFAULT_MODEL)))
+    checks.append(("Gemini Live Voice Model", LIVE_MODEL, bool(LIVE_MODEL)))
 
     # 4. Audio Input Device Check
     try:
