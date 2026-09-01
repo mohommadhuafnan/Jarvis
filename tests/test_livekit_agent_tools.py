@@ -64,11 +64,41 @@ class TestLiveKitAgentTools(unittest.TestCase):
             self.assertFalse(res.get("success"))
             self.assertTrue(res.get("confirmation_required"))
 
-    def test_invalid_tool_handling(self):
-        """Verify calling a nonexistent tool returns structured error rather than crashing."""
-        res = execute_jarvis_tool("nonexistent.tool", {})
+    def test_shutdown_pc_confirmation_gating(self):
+        """Verify shutdown requires confirmation before executing."""
+        res = execute_jarvis_tool("system.shutdownPC", {"confirm": False})
         self.assertFalse(res.get("success"))
-        self.assertIn("error", res)
+        self.assertTrue(res.get("confirmation_required"))
+        self.assertEqual(res.get("risk_level"), "CONFIRM")
+
+        tool_direct = registry.execute("system.shutdownPC", {"confirm": False})
+        self.assertFalse(tool_direct.get("result", {}).get("success"))
+        self.assertTrue(tool_direct.get("result", {}).get("confirmation_required"))
+        self.assertIn("Shutdown will power off your computer", str(tool_direct))
+
+    def test_restart_pc_confirmation_gating(self):
+        """Verify restart requires confirmation before executing."""
+        res = execute_jarvis_tool("system.restartPC", {"confirm": False})
+        self.assertFalse(res.get("success"))
+        self.assertTrue(res.get("confirmation_required"))
+        self.assertEqual(res.get("risk_level"), "CONFIRM")
+
+        tool_direct = registry.execute("system.restartPC", {"confirm": False})
+        self.assertFalse(tool_direct.get("result", {}).get("success"))
+        self.assertTrue(tool_direct.get("result", {}).get("confirmation_required"))
+        self.assertIn("Restart will reboot your computer", str(tool_direct))
+
+    def test_lock_workstation_tool_registration(self):
+        """Verify lock workstation tool is registered."""
+        defn = registry.get_definition("system.lockWorkstation")
+        self.assertIsNotNone(defn)
+
+    def test_livekit_desktop_client_token(self):
+        """Verify LiveKit token generation."""
+        from backend.voice.livekit_client import livekit_desktop_client
+        token = livekit_desktop_client.generate_token(identity="test-user")
+        self.assertIsInstance(token, str)
+        self.assertGreater(len(token), 50)
 
 if __name__ == "__main__":
     unittest.main()

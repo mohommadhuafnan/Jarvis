@@ -361,6 +361,32 @@ class JarvisVoiceAgent(Agent):
         logger.info("Tool Call: get_system_diagnostics()")
         return execute_jarvis_tool("system.getDiagnostics", {})
 
+    @function_tool()
+    async def shutdown_pc(self, context: RunContext, confirm: bool = False) -> Dict[str, Any]:
+        """Initiate computer shutdown. Requires explicit confirmation before executing.
+
+        Args:
+            confirm: Set to True ONLY if the user has explicitly confirmed the shutdown.
+        """
+        logger.info(f"Tool Call: shutdown_pc(confirm={confirm})")
+        return execute_jarvis_tool("system.shutdownPC", {"confirm": confirm})
+
+    @function_tool()
+    async def restart_pc(self, context: RunContext, confirm: bool = False) -> Dict[str, Any]:
+        """Initiate computer restart. Requires explicit confirmation before executing.
+
+        Args:
+            confirm: Set to True ONLY if the user has explicitly confirmed the restart.
+        """
+        logger.info(f"Tool Call: restart_pc(confirm={confirm})")
+        return execute_jarvis_tool("system.restartPC", {"confirm": confirm})
+
+    @function_tool()
+    async def lock_workstation(self, context: RunContext) -> Dict[str, Any]:
+        """Lock the Windows desktop screen immediately."""
+        logger.info("Tool Call: lock_workstation()")
+        return execute_jarvis_tool("system.lockWorkstation", {})
+
 
 server = AgentServer()
 

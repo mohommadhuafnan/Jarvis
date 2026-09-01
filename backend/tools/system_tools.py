@@ -100,3 +100,94 @@ def get_weather(city: str):
         "wind_speed": "14 km/h",
         "note": "Live satellite radar synchronized"
     }
+
+@registry.register(
+    name="system.shutdownPC",
+    description="Initiate a safe Windows computer shutdown. Requires user confirmation.",
+    risk_level=RiskLevel.CONFIRM,
+    parameters={
+        "type": "object",
+        "properties": {
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be set to True only after the user explicitly confirms the shutdown."
+            }
+        },
+        "required": ["confirm"]
+    }
+)
+def shutdown_pc(confirm: bool = False):
+    import subprocess
+    import os
+    if not confirm:
+        return {
+            "success": False,
+            "confirmation_required": True,
+            "prompt": "Shutdown will power off your computer. Do you want me to continue?"
+        }
+    if os.name == "nt":
+        subprocess.Popen(["shutdown", "/s", "/t", "15", "/c", "JARVIS shutdown sequence initiated."])
+        return {
+            "success": True,
+            "message": "Shutdown sequence initiated. Your computer will turn off in 15 seconds."
+        }
+    return {
+        "success": False,
+        "error": "Shutdown is only supported on Windows host systems."
+    }
+
+@registry.register(
+    name="system.restartPC",
+    description="Initiate a safe Windows computer restart. Requires user confirmation.",
+    risk_level=RiskLevel.CONFIRM,
+    parameters={
+        "type": "object",
+        "properties": {
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be set to True only after the user explicitly confirms the restart."
+            }
+        },
+        "required": ["confirm"]
+    }
+)
+def restart_pc(confirm: bool = False):
+    import subprocess
+    import os
+    if not confirm:
+        return {
+            "success": False,
+            "confirmation_required": True,
+            "prompt": "Restart will reboot your computer. Do you want me to continue?"
+        }
+    if os.name == "nt":
+        subprocess.Popen(["shutdown", "/r", "/t", "15", "/c", "JARVIS restart sequence initiated."])
+        return {
+            "success": True,
+            "message": "Restart sequence initiated. Your computer will reboot in 15 seconds."
+        }
+    return {
+        "success": False,
+        "error": "Restart is only supported on Windows host systems."
+    }
+
+@registry.register(
+    name="system.lockWorkstation",
+    description="Lock the active Windows desktop workstation immediately.",
+    risk_level=RiskLevel.LOW,
+    parameters={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+def lock_workstation():
+    import os
+    if os.name == "nt":
+        import ctypes
+        res = ctypes.windll.user32.LockWorkStation()
+        if res:
+            return {"success": True, "message": "Workstation locked."}
+        return {"success": False, "error": "Failed to lock workstation."}
+    return {"success": False, "error": "Lock workstation is only supported on Windows."}
+
