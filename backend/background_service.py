@@ -252,10 +252,33 @@ class JarvisBackgroundService:
             tts_service.speak(msg, block=True)
             return msg
 
+        # Open Project / Workspace
+        if any(k in clean_lower for k in ["open my project", "open project", "open workspace"]):
+            res_code = registry.execute("computer.openApplication", {"application": "vscode"})
+            if res_code.get("success") and res_code.get("result", {}).get("success"):
+                msg = "Opening your project in VS Code."
+            else:
+                res_fld = registry.execute("computer.openFolder", {"folder_path": str(BASE_DIR)})
+                msg = "Opening your project folder."
+            tts_service.speak(msg, block=True)
+            return msg
+
+        # Keyboard Typing
+        if clean_lower.startswith("type this message:") or clean_lower.startswith("type this:") or clean_lower.startswith("type message:") or clean_lower.startswith("type "):
+            text_to_type = re.sub(r'^(type\s+this\s+message:?|type\s+this:?|type\s+message:?|type\s+)', '', user_command, flags=re.I).strip().strip("'\"")
+            if text_to_type:
+                res = registry.execute("computer.typeText", {"text": text_to_type})
+                msg = "Typed message into active window."
+                tts_service.speak(msg, block=True)
+                return msg
+
         # Take Screenshot
         if any(k in clean_lower for k in ["screenshot", "take screenshot", "take a screenshot", "capture screen"]):
             res = registry.execute("computer.takeScreenshot", {})
-            msg = "Screenshot captured."
+            if res.get("success") and res.get("result", {}).get("success"):
+                msg = "Screenshot taken."
+            else:
+                msg = "Failed to capture screenshot."
             tts_service.speak(msg, block=True)
             return msg
 
@@ -348,9 +371,13 @@ class JarvisBackgroundService:
         self.is_running = True
         self._stop_event.clear()
 
-        # Register OS signal handlers
-        signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+        # Register OS signal handlers only in the main thread
+        if threading.current_thread() is threading.main_thread():
+            try:
+                signal.signal(signal.SIGINT, self._handle_signal)
+                signal.signal(signal.SIGTERM, self._handle_signal)
+            except (ValueError, AttributeError):
+                pass
 
         # Start Local Wake Word Detector
         self.detector.start()

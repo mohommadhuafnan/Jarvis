@@ -11,7 +11,7 @@ from backend.tools.computer_tools import (
     open_folder
 )
 from backend.voice.tts_service import tts_service
-from backend.background_service import background_service
+from backend.background_service import background_service, WakeWordState
 from backend.services.startup_service import startup_service
 
 class TestDesktopActions(unittest.TestCase):
@@ -96,6 +96,19 @@ class TestDesktopActions(unittest.TestCase):
         self.assertTrue(background_service._is_sleep_phrase("go to sleep"))
         self.assertTrue(background_service._is_sleep_phrase("stop listening"))
         self.assertFalse(background_service._is_sleep_phrase("open chrome"))
+
+    def test_project_and_typing_commands(self):
+        with patch("backend.voice.tts_service.tts_service.speak", return_value=None):
+            with patch("subprocess.Popen", return_value=MagicMock()):
+                # Project opening
+                res_proj = background_service.process_voice_command("Open my project")
+                self.assertIn("project", res_proj.lower())
+
+                # Typing command
+                with patch("pyautogui.write", return_value=None) as mock_write:
+                    res_type = background_service.process_voice_command("Type this message: Hello world")
+                    self.assertIn("Typed message", res_type)
+                    mock_write.assert_called_once_with("Hello world", interval=0.02)
 
     def test_startup_service_status(self):
         status = startup_service.get_status()

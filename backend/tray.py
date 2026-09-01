@@ -66,13 +66,24 @@ class JarvisTrayApp:
         logger.info("Opening JARVIS Cyberpunk HUD in browser...")
         webbrowser.open("http://localhost:5173")
 
-    def _start_listening(self, icon, item):
-        logger.info("Tray: Resuming wake-word listening...")
-        background_service.detector.resume()
+    def _wake_jarvis(self, icon, item):
+        logger.info("Tray: Waking JARVIS...")
+        background_service.start_active_voice_session(reason="Tray Wake Request")
 
-    def _pause_listening(self, icon, item):
-        logger.info("Tray: Pausing wake-word listening...")
-        background_service.detector.pause()
+    def _sleep_jarvis(self, icon, item):
+        logger.info("Tray: Putting JARVIS to sleep...")
+        background_service.end_active_voice_session(reason="Tray Sleep Request")
+
+    def _restart_jarvis(self, icon, item):
+        logger.info("Tray: Restarting JARVIS Background Service...")
+        background_service.stop()
+        time.sleep(1)
+        self._bg_thread = threading.Thread(
+            target=background_service.run_forever,
+            daemon=True,
+            name="JARVIS-BackgroundService-Thread"
+        )
+        self._bg_thread.start()
 
     def _view_logs(self, icon, item):
         logger.info(f"Tray: Opening log file {LOG_FILE_PATH}...")
@@ -107,10 +118,12 @@ class JarvisTrayApp:
             item("JARVIS AI Operating System", lambda icon, item: None, enabled=False),
             item(self._get_status_label, lambda icon, item: None, enabled=False),
             pystray.Menu.SEPARATOR,
+            item("Wake JARVIS", self._wake_jarvis),
+            item("Sleep JARVIS", self._sleep_jarvis),
+            pystray.Menu.SEPARATOR,
             item("Open Dashboard (HUD)", self._open_dashboard, default=True),
-            item("Start Listening", self._start_listening),
-            item("Pause Listening", self._pause_listening),
             item("View Logs", self._view_logs),
+            item("Restart JARVIS", self._restart_jarvis),
             pystray.Menu.SEPARATOR,
             item("Exit JARVIS", self._exit_jarvis)
         )
