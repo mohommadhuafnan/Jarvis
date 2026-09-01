@@ -24,7 +24,7 @@ export async function fetchSystemStats() {
       time: new Date().toLocaleTimeString(),
       date: new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     },
-    user_name: "RAVIT",
+    user_name: "Sir",
     logs: [
       { id: "act_1", module: "System", action: "JARVIS AI initialized successfully", details: "All systems are operational", status: "success", created_at: "20:53" },
       { id: "act_2", module: "Camera System", action: "Connected to 5 cameras", details: "Monitoring and recording active", status: "success", created_at: "20:51" },

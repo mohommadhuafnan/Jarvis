@@ -51,7 +51,7 @@ export function App() {
     total_latency_ms: 167.9,
     state: 'IDLE'
   });
-  const [userName, setUserName] = useState<string>("RAVIT");
+  const [userName, setUserName] = useState<string>("Sir");
   const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([
     { id: "act_1", module: "System", action: "JARVIS AI Voice Core v2.5.1 Online", details: "Direct 2-way speech channel active", status: "success", created_at: "Ready" },
     { id: "act_2", module: "Neural Core", action: "Gemini AI Connected", details: "Instant multi-modal reasoning", status: "success", created_at: "Online" },
