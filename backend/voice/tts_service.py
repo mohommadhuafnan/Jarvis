@@ -30,6 +30,7 @@ class TTSService:
         self.voice_name = voice_name or DEFAULT_VOICE or "Puck"
         self.gemini_voice = GeminiVoiceProvider()
         self._lock = threading.Lock()
+        self.is_speaking = False
         self.cache_dir = BASE_DIR / "storage" / "voice_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -55,7 +56,7 @@ class TTSService:
         if not cleaned:
             return
 
-        logger.info(f"[JARVIS_VOICE_OUT] Voice='{self.voice_name}' -> '{cleaned}'")
+        logger.info(f"GEMINI_PUCK_TTS_STARTED Text: '{cleaned}'")
 
         if block:
             self._speak_sync(cleaned)
@@ -64,60 +65,73 @@ class TTSService:
 
     def _speak_sync(self, text: str):
         with self._lock:
+            self.is_speaking = True
             cache_file = self._get_cache_path(text)
+            try:
+                # 1. Check local audio cache first (instant 0ms playback)
+                if cache_file.exists():
+                    try:
+                        logger.info("GEMINI_PUCK_TTS_PLAYING")
+                        winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
+                        logger.info("GEMINI_PUCK_TTS_COMPLETED")
+                        return
+                    except Exception as e:
+                        logger.debug(f"Cache playback failed: {e}")
 
-            # 1. Check local audio cache first (instant 0ms playback)
-            if cache_file.exists():
+                # 2. Synthesize with Google Gemini Voice Provider (Voice: Puck)
                 try:
-                    winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
-                    return
-                except Exception as e:
-                    logger.debug(f"Cache playback failed: {e}")
+                    res = self.gemini_voice.synthesize(text, voice_name=self.voice_name)
+                    if res.get("success") and "wav_bytes" in res:
+                        wav_bytes = res["wav_bytes"]
+                        cache_file.write_bytes(wav_bytes)
+                        logger.info("GEMINI_PUCK_TTS_PLAYING")
+                        winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
+                        logger.info("GEMINI_PUCK_TTS_COMPLETED")
+                        return
+                    elif res.get("success") and "audio_data" in res:
+                        raw_b64 = res["audio_data"].split(",")[-1]
+                        wav_bytes = base64.b64decode(raw_b64)
+                        cache_file.write_bytes(wav_bytes)
+                        logger.info("GEMINI_PUCK_TTS_PLAYING")
+                        winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
+                        logger.info("GEMINI_PUCK_TTS_COMPLETED")
+                        return
+                except Exception as gemini_err:
+                    logger.warning(f"Gemini Voice synthesis notice: {gemini_err}. Attempting local speech fallback.")
 
-            # 2. Synthesize with Google Gemini Voice Provider (Voice: Puck)
-            try:
-                res = self.gemini_voice.synthesize(text, voice_name=self.voice_name)
-                if res.get("success") and "wav_bytes" in res:
-                    wav_bytes = res["wav_bytes"]
-                    cache_file.write_bytes(wav_bytes)
-                    winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
+                # 3. Local Offline Fallback (pyttsx3 / PowerShell) if network/API unavailable
+                try:
+                    import pyttsx3
+                    engine = pyttsx3.init()
+                    engine.setProperty('rate', 185)
+                    voices = engine.getProperty('voices')
+                    for v in voices:
+                        if 'david' in v.name.lower() or 'puck' in v.name.lower():
+                            engine.setProperty('voice', v.id)
+                            break
+                    logger.info("GEMINI_PUCK_TTS_PLAYING (Fallback)")
+                    engine.say(text)
+                    engine.runAndWait()
+                    engine.stop()
+                    logger.info("GEMINI_PUCK_TTS_COMPLETED")
                     return
-                elif res.get("success") and "audio_data" in res:
-                    raw_b64 = res["audio_data"].split(",")[-1]
-                    wav_bytes = base64.b64decode(raw_b64)
-                    cache_file.write_bytes(wav_bytes)
-                    winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
-                    return
-            except Exception as gemini_err:
-                logger.warning(f"Gemini Voice synthesis notice: {gemini_err}. Attempting local speech fallback.")
+                except Exception:
+                    pass
 
-            # 3. Local Offline Fallback (pyttsx3 / PowerShell) if network/API unavailable
-            try:
-                import pyttsx3
-                engine = pyttsx3.init()
-                engine.setProperty('rate', 185)
-                voices = engine.getProperty('voices')
-                for v in voices:
-                    if 'david' in v.name.lower() or 'puck' in v.name.lower():
-                        engine.setProperty('voice', v.id)
-                        break
-                engine.say(text)
-                engine.runAndWait()
-                engine.stop()
-                return
-            except Exception:
-                pass
-
-            try:
-                ps_text = text.replace("'", "''")
-                cmd = [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-Command",
-                    f"Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Speak('{ps_text}')"
-                ]
-                subprocess.run(cmd, capture_output=True, timeout=8)
-            except Exception as ps_err:
-                logger.error(f"Speech playback fallback failed: {ps_err}")
+                try:
+                    ps_text = text.replace("'", "''")
+                    cmd = [
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-Command",
+                        f"Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Speak('{ps_text}')"
+                    ]
+                    logger.info("GEMINI_PUCK_TTS_PLAYING (PS Fallback)")
+                    subprocess.run(cmd, capture_output=True, timeout=8)
+                    logger.info("GEMINI_PUCK_TTS_COMPLETED")
+                except Exception as ps_err:
+                    logger.error(f"Speech playback fallback failed: {ps_err}")
+            finally:
+                self.is_speaking = False
 
 tts_service = TTSService()

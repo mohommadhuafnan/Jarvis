@@ -21,6 +21,7 @@ from backend.config import (
     WAKE_PHRASE,
     INACTIVITY_TIMEOUT_SECS,
     USER_NAME,
+    ASSISTANT_NAME,
     GEMINI_API_KEY
 )
 from backend.voice.wake_word_detector import (
@@ -123,12 +124,13 @@ class SingleInstanceLock:
 
 class JarvisBackgroundService:
     """
-    Master Background Assistant Daemon for Windows.
+    Master Hands-Free Desktop Voice Assistant Daemon for Windows.
     Operates 100% in the background (no terminal window required).
 
-    State Machine:
-    1. SLEEPING (LISTENING_FOR_WAKE_WORD) -> Lightweight local mic listening for 'Hello JARVIS'.
-    2. ACTIVATED (ACTIVE) -> Speaks 'Yes, how can I help?', captures command, executes tools, speaks result.
+    Unified Audio Loop State Machine:
+    1. SLEEPING (LISTENING_FOR_WAKE_WORD) -> Listens locally on default microphone for 'Hello JARVIS'.
+    2. ACTIVATED (LISTENING_FOR_COMMAND) -> Speaks 'Yes, how can I help?' in Gemini Puck Voice,
+       captures user command, executes desktop action, speaks response in Gemini Puck Voice.
     3. SLEEP COMMAND -> On 'Sleep JARVIS', speaks confirmation and returns to SLEEPING.
     """
 
@@ -137,47 +139,33 @@ class JarvisBackgroundService:
         self.detector: WakeWordDetector = wake_word_detector
         self.is_running = False
         self._stop_event = threading.Event()
-        self._active_thread: Optional[threading.Thread] = None
+        self._mic_thread: Optional[threading.Thread] = None
         self._is_active_session = False
         self._inactivity_timeout = INACTIVITY_TIMEOUT_SECS
 
-        # Configure detector callbacks
+        # Detector callbacks
         self.detector.on_wake_detected = self._on_wake_word_detected
-        self.detector.on_state_change = self._on_detector_state_changed
 
     def _on_wake_word_detected(self, phrase: str):
-        """Invoked when local wake phrase 'Hello JARVIS' is detected."""
-        logger.info(f"[WAKE_DETECTED] Phrase: '{phrase}' -> Waking up JARVIS.")
-        self.start_active_voice_session(reason=f"Wake phrase detected: {phrase}")
-
-    def _on_detector_state_changed(self, new_state: WakeWordState, old_state: WakeWordState):
-        logger.info(f"[STATE_TRANSITION] {old_state.value} -> {new_state.value}")
-
-    def start_active_voice_session(self, reason: str = "Manual activation"):
-        """Pause wake word detection, speak greeting, and launch active listening loop."""
-        if self._is_active_session:
-            return
-
+        """Invoked when wake phrase is spotted."""
         self._is_active_session = True
-        self.detector.pause()
         self.detector.set_state(WakeWordState.ACTIVATED)
 
-        # Speak wake response aloud
-        tts_service.speak("Yes, how can I help?", block=True)
-
-        # Start active listening thread
-        self._active_thread = threading.Thread(
-            target=self._active_conversation_loop,
-            daemon=True,
-            name="JARVIS-ActiveVoiceSession"
-        )
-        self._active_thread.start()
+    def start_active_voice_session(self, reason: str = "Manual activation"):
+        """Manually trigger wake state from tray menu or external event."""
+        logger.info(f"Manual Wake Requested: {reason}")
+        self._is_active_session = True
+        self.detector.set_state(WakeWordState.ACTIVATED)
+        greeting = "Yes, how can I help?"
+        tts_service.speak(greeting, block=True)
+        logger.info("LISTENING_FOR_COMMAND")
 
     def end_active_voice_session(self, reason: str = "User said sleep or inactivity timeout"):
         """Conclude active session and return to background wake-word listening."""
-        logger.info(f"[SESSION_END] Reason: {reason}. Returning to SLEEPING state.")
+        logger.info(f"Returning to SLEEPING state: {reason}")
         self._is_active_session = False
-        self.detector.resume()
+        self.detector.set_state(WakeWordState.LISTENING_FOR_WAKE_WORD)
+        logger.info("LISTENING_FOR_WAKE_WORD")
 
     def _is_sleep_phrase(self, text: str) -> bool:
         clean = text.lower().strip()
@@ -185,20 +173,22 @@ class JarvisBackgroundService:
 
     def process_voice_command(self, user_command: str) -> str:
         """
-        Process a user command through tool engine / AI and return the spoken response text.
+        Process user voice command, execute desktop action / AI query,
+        and speak the response using Google Gemini Puck voice.
         """
-        logger.info(f"[USER_COMMAND] '{user_command}'")
         clean_lower = user_command.lower().strip()
 
-        # 1. Check Sleep Phrase
+        # 1. Sleep Command
         if self._is_sleep_phrase(clean_lower):
-            msg = "Okay, I'll sleep. Say Hello JARVIS when you need me."
+            msg = "Okay, I will sleep. Say Hello JARVIS when you need me."
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
-            self.end_active_voice_session(reason="Sleep command received")
+            self._is_active_session = False
+            self.detector.set_state(WakeWordState.LISTENING_FOR_WAKE_WORD)
+            logger.info("LISTENING_FOR_WAKE_WORD")
             return msg
 
-        # 2. Desktop Application & Computer Control Actions
-        # Open Application (Chrome, WhatsApp, VS Code, Notepad, Calculator, Explorer)
+        # 2. Desktop Application Launches (Chrome, WhatsApp, VS Code, Notepad, Calc, Explorer)
         if "open" in clean_lower and any(app in clean_lower for app in ["chrome", "whatsapp", "code", "vs code", "vscode", "notepad", "calculator", "calc", "explorer", "file explorer"]):
             for app in ["chrome", "whatsapp", "vs code", "vscode", "code", "notepad", "calculator", "calc", "file explorer", "explorer"]:
                 if app in clean_lower:
@@ -207,6 +197,7 @@ class JarvisBackgroundService:
                         msg = res["result"].get("message", f"Opening {app}.")
                     else:
                         msg = res.get("result", {}).get("error") or f"Sorry, I couldn't open {app} on your computer."
+                    logger.info(f"RESPONSE_GENERATED: '{msg}'")
                     tts_service.speak(msg, block=True)
                     return msg
 
@@ -215,6 +206,7 @@ class JarvisBackgroundService:
             query = re.sub(r'.*(?:search\s+youtube\s+for|youtube\s+search|find\s+on\s+youtube)\s+', '', user_command, flags=re.I).strip()
             res = registry.execute("computer.searchYouTube", {"query": query})
             msg = res.get("result", {}).get("message", f"Searching YouTube for {query}.")
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
@@ -223,20 +215,22 @@ class JarvisBackgroundService:
             query = re.sub(r'.*(?:search\s+google\s+for|google\s+search\s+for|search\s+for|google\s+for)\s+', '', user_command, flags=re.I).strip()
             res = registry.execute("computer.searchGoogle", {"query": query})
             msg = res.get("result", {}).get("message", f"Searching Google for {query}.")
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
-        # Open YouTube
+        # Open YouTube / Google Website
         if any(k in clean_lower for k in ["open youtube", "go to youtube", "launch youtube"]):
             res = registry.execute("computer.openWebsite", {"url": "https://www.youtube.com"})
             msg = "Opening YouTube."
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
-        # Open Google
         if any(k in clean_lower for k in ["open google", "go to google"]):
             res = registry.execute("computer.openWebsite", {"url": "https://www.google.com"})
             msg = "Opening Google."
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
@@ -249,10 +243,11 @@ class JarvisBackgroundService:
                     break
             res = registry.execute("computer.openFolder", {"folder_path": fld})
             msg = res.get("result", {}).get("message", f"Opened {fld} folder.")
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
-        # Open Project / Workspace
+        # Open Workspace / Project
         if any(k in clean_lower for k in ["open my project", "open project", "open workspace"]):
             res_code = registry.execute("computer.openApplication", {"application": "vscode"})
             if res_code.get("success") and res_code.get("result", {}).get("success"):
@@ -260,15 +255,17 @@ class JarvisBackgroundService:
             else:
                 res_fld = registry.execute("computer.openFolder", {"folder_path": str(BASE_DIR)})
                 msg = "Opening your project folder."
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
-        # Keyboard Typing
+        # Keyboard Typing into Active Window
         if clean_lower.startswith("type this message:") or clean_lower.startswith("type this:") or clean_lower.startswith("type message:") or clean_lower.startswith("type "):
             text_to_type = re.sub(r'^(type\s+this\s+message:?|type\s+this:?|type\s+message:?|type\s+)', '', user_command, flags=re.I).strip().strip("'\"")
             if text_to_type:
                 res = registry.execute("computer.typeText", {"text": text_to_type})
                 msg = "Typed message into active window."
+                logger.info(f"RESPONSE_GENERATED: '{msg}'")
                 tts_service.speak(msg, block=True)
                 return msg
 
@@ -279,84 +276,143 @@ class JarvisBackgroundService:
                 msg = "Screenshot taken."
             else:
                 msg = "Failed to capture screenshot."
+            logger.info(f"RESPONSE_GENERATED: '{msg}'")
             tts_service.speak(msg, block=True)
             return msg
 
-        # 3. AI Conversational & Knowledge Query fallback
+        # 3. AI Conversational & Knowledge Query Fallback
         try:
             ai_res = gemini_service.process_query(user_command)
             spoken_answer = ai_res.get("reply") or ai_res.get("spoken_response") or ai_res.get("summary") or f"I am {ASSISTANT_NAME}, your personal AI desktop assistant."
+            logger.info(f"RESPONSE_GENERATED: '{spoken_answer}'")
             tts_service.speak(spoken_answer, block=True)
             return spoken_answer
         except Exception as ai_err:
             logger.error(f"AI query processing error: {ai_err}")
             fallback_msg = f"I am {ASSISTANT_NAME}, your personal AI assistant. How may I assist you?"
+            logger.info(f"RESPONSE_GENERATED: '{fallback_msg}'")
             tts_service.speak(fallback_msg, block=True)
             return fallback_msg
 
-    def _active_conversation_loop(self):
+    def _microphone_listener_worker(self):
         """
-        Active conversation worker that listens for commands via microphone,
-        processes user intent, executes tools, speaks responses, and handles timeouts.
+        Dedicated Hands-Free Microphone Audio Listener for JARVIS.
+        Continuously captures microphone audio in a single stream to avoid
+        device concurrency collisions on Windows.
         """
-        logger.info("[ACTIVE_LOOP] Started listening for voice commands...")
-        last_speech_time = time.time()
-
         try:
             import speech_recognition as sr
             recognizer = sr.Recognizer()
-            recognizer.energy_threshold = 300
+            recognizer.energy_threshold = 150
             recognizer.dynamic_energy_threshold = True
             recognizer.pause_threshold = 0.8
+            recognizer.phrase_threshold = 0.3
+            recognizer.non_speaking_duration = 0.5
 
             try:
                 mic = sr.Microphone()
-            except Exception as e:
-                logger.error(f"Failed to access microphone in active loop: {e}")
-                self.end_active_voice_session(reason="Mic error")
+            except Exception as mic_err:
+                logger.error(f"MICROPHONE_INIT_FAILED: {mic_err}")
+                self.detector.set_state(WakeWordState.ERROR)
                 return
 
+            logger.info("MICROPHONE_INITIALIZED")
+            logger.info("MICROPHONE_DEVICE: Default Windows Audio Input Device (Microphone Array)")
+
             with mic as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                try:
+                    recognizer.adjust_for_ambient_noise(source, duration=0.8)
+                    logger.info(f"MICROPHONE_CALIBRATED: Energy Threshold = {recognizer.energy_threshold:.1f}")
+                except Exception as cal_err:
+                    logger.warning(f"Ambient noise calibration notice: {cal_err}")
 
-                while self._is_active_session and not self._stop_event.is_set():
-                    # Check inactivity timeout (e.g. 20s of silence)
-                    if time.time() - last_speech_time > self._inactivity_timeout:
-                        logger.info(f"Inactivity timeout ({self._inactivity_timeout}s elapsed without speech).")
-                        self.end_active_voice_session(reason="Inactivity timeout")
-                        break
+                logger.info("LISTENING_FOR_WAKE_WORD")
+                last_speech_time = time.time()
 
-                    try:
-                        self.detector.set_state(WakeWordState.ACTIVATED)
-                        # Listen for command
-                        audio = recognizer.listen(source, timeout=4.0, phrase_time_limit=10.0)
-                        if not self._is_active_session or self._stop_event.is_set():
-                            break
-
-                        self.detector.set_state(WakeWordState.PROCESSING)
-                        command_text = ""
-                        try:
-                            command_text = recognizer.recognize_google(audio).strip()
-                        except (sr.UnknownValueError, sr.RequestError):
-                            pass
-
-                        if command_text:
-                            last_speech_time = time.time()
-                            self.detector.set_state(WakeWordState.SPEAKING)
-                            self.process_voice_command(command_text)
-
-                    except sr.WaitTimeoutError:
+                while not self._stop_event.is_set():
+                    # If JARVIS is currently speaking via speaker, skip capture to prevent self-triggering
+                    if tts_service.is_speaking:
+                        time.sleep(0.15)
                         continue
-                    except Exception as loop_e:
-                        logger.debug(f"Active loop tick note: {loop_e}")
-                        time.sleep(0.1)
+
+                    # 1. SLEEPING MODE (Listening for Wake Word 'Hello JARVIS')
+                    if not self._is_active_session:
+                        try:
+                            audio = recognizer.listen(source, timeout=1.5, phrase_time_limit=3.5)
+                            if self._stop_event.is_set() or tts_service.is_speaking:
+                                continue
+
+                            text = ""
+                            try:
+                                text = recognizer.recognize_google(audio).strip()
+                            except (sr.UnknownValueError, sr.RequestError):
+                                pass
+
+                            if text:
+                                text_lower = text.lower()
+                                for phrase in self.detector.wake_phrases:
+                                    if phrase in text_lower:
+                                        logger.info(f"WAKE_WORD_DETECTED: '{phrase}'")
+                                        self._is_active_session = True
+                                        self.detector.set_state(WakeWordState.ACTIVATED)
+                                        last_speech_time = time.time()
+
+                                        # Speak Wake Greeting aloud in Gemini Puck Voice
+                                        greeting = "Yes, how can I help?"
+                                        tts_service.speak(greeting, block=True)
+                                        time.sleep(0.3) # Acoustic feedback cooldown
+                                        logger.info("LISTENING_FOR_COMMAND")
+                                        break
+                        except sr.WaitTimeoutError:
+                            continue
+                        except Exception as loop_e:
+                            if not self._stop_event.is_set():
+                                logger.debug(f"Wake loop tick notice: {loop_e}")
+                            time.sleep(0.1)
+
+                    # 2. ACTIVE MODE (Listening for Command)
+                    else:
+                        # Check inactivity timeout (e.g. 25 seconds)
+                        if time.time() - last_speech_time > self._inactivity_timeout:
+                            logger.info(f"Inactivity timeout ({self._inactivity_timeout}s elapsed). Returning to sleep.")
+                            self._is_active_session = False
+                            self.detector.set_state(WakeWordState.LISTENING_FOR_WAKE_WORD)
+                            logger.info("LISTENING_FOR_WAKE_WORD")
+                            continue
+
+                        try:
+                            audio = recognizer.listen(source, timeout=3.5, phrase_time_limit=10.0)
+                            if self._stop_event.is_set() or tts_service.is_speaking:
+                                continue
+
+                            command_text = ""
+                            try:
+                                command_text = recognizer.recognize_google(audio).strip()
+                            except (sr.UnknownValueError, sr.RequestError):
+                                pass
+
+                            if command_text:
+                                last_speech_time = time.time()
+                                logger.info(f"COMMAND_TRANSCRIPT: '{command_text}'")
+                                logger.info(f"COMMAND_RECEIVED: '{command_text}'")
+
+                                self.detector.set_state(WakeWordState.PROCESSING)
+                                self.process_voice_command(command_text)
+                                time.sleep(0.3) # Acoustic feedback cooldown
+
+                                if self._is_active_session:
+                                    logger.info("LISTENING_FOR_COMMAND")
+                        except sr.WaitTimeoutError:
+                            continue
+                        except Exception as cmd_loop_e:
+                            if not self._stop_event.is_set():
+                                logger.debug(f"Command loop tick notice: {cmd_loop_e}")
+                            time.sleep(0.1)
 
         except ImportError:
-            logger.warning("speech_recognition library not installed in active loop.")
-            self.end_active_voice_session(reason="Missing speech_recognition")
+            logger.error("speech_recognition library is not installed.")
         except Exception as fatal_e:
-            logger.error(f"Fatal error in active voice loop: {fatal_e}")
-            self.end_active_voice_session(reason="Fatal active loop error")
+            logger.error(f"Fatal error in microphone listener worker: {fatal_e}")
 
     def start(self) -> bool:
         """Starts the background service daemon."""
@@ -379,8 +435,14 @@ class JarvisBackgroundService:
             except (ValueError, AttributeError):
                 pass
 
-        # Start Local Wake Word Detector
+        # Start Unified Microphone Audio Thread
         self.detector.start()
+        self._mic_thread = threading.Thread(
+            target=self._microphone_listener_worker,
+            daemon=True,
+            name="JARVIS-Microphone-Worker"
+        )
+        self._mic_thread.start()
         logger.info(f"JARVIS is ready and listening locally for '{WAKE_PHRASE}'.")
         return True
 
@@ -409,6 +471,8 @@ class JarvisBackgroundService:
         self._stop_event.set()
 
         self.detector.stop()
+        if self._mic_thread and self._mic_thread.is_alive():
+            self._mic_thread.join(timeout=1.5)
         self.lock.release()
         logger.info("JARVIS background service stopped cleanly.")
 
