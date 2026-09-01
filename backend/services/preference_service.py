@@ -12,7 +12,7 @@ class PreferenceService:
     """
 
     def __init__(self):
-        self.default_user = USER_NAME or "RAVIT"
+        self.default_user = USER_NAME or "default_user"
 
     def set_preference(self, key: str, value: Any, user_id: Optional[str] = None) -> Dict[str, Any]:
         col = get_preferences_col()

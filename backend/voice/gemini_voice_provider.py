@@ -54,9 +54,9 @@ class GeminiVoiceProvider(BaseVoiceProvider):
         }
 
         for model in self.tts_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.api_key}"
             try:
-                res = requests.post(url, headers=headers, json=payload, timeout=8)
+                res = requests.post(url, headers=headers, json=payload, timeout=10)
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])

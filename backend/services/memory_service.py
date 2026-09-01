@@ -16,7 +16,7 @@ class MemoryService:
     """
 
     def __init__(self):
-        self.default_user = USER_NAME or "RAVIT"
+        self.default_user = USER_NAME or "default_user"
 
     def _parse_tags(self, raw: Any) -> List[str]:
         if not raw:

@@ -48,7 +48,7 @@ WAKE_WORD = os.getenv("WAKE_WORD", "Jarvis")
 WAKE_PHRASE = os.getenv("WAKE_PHRASE", "Hello JARVIS")
 WAKE_WORD_SENSITIVITY = float(os.getenv("WAKE_WORD_SENSITIVITY", "0.5"))
 INACTIVITY_TIMEOUT_SECS = int(os.getenv("INACTIVITY_TIMEOUT_SECS", "30"))
-USER_NAME = os.getenv("USER_NAME", "RAVIT")
+USER_NAME = os.getenv("USER_NAME", "Sir")
 LANGUAGE = os.getenv("LANGUAGE", "en") # 'en', 'ta', 'si'
 DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "Puck")
 

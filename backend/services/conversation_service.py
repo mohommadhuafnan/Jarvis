@@ -13,7 +13,7 @@ class ConversationService:
     """
 
     def __init__(self):
-        self.default_user = USER_NAME or "RAVIT"
+        self.default_user = USER_NAME or "default_user"
 
     def get_or_create_conversation(self, conversation_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
         """

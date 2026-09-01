@@ -33,7 +33,7 @@ class KnowledgeService:
 
     def __init__(self):
         init_db()
-        self.default_user = USER_NAME or "RAVIT"
+        self.default_user = USER_NAME or "default_user"
         self.api_key = GEMINI_API_KEY or ""
 
     def _call_gemini_json(self, prompt: str, image_bytes: Optional[bytes] = None, mime_type: str = "image/png") -> Dict[str, Any]:

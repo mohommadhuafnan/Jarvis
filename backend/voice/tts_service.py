@@ -8,8 +8,6 @@ import hashlib
 import logging
 import threading
 import winsound
-import tempfile
-import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -20,10 +18,10 @@ logger = logging.getLogger("JARVIS.Voice.TTSService")
 
 class TTSService:
     """
-    JARVIS Primary Voice Output Engine.
-    Uses Google Gemini Voice API (Voice: Puck) for natural, expressive speech.
-    Features local voice caching for zero-latency wake/sleep responses,
-    and automatic offline fallback.
+    JARVIS Dedicated Voice Output Engine.
+    Exclusively powered by Google Gemini Voice API (Voice: Puck).
+    Outputs audio directly to Windows speakers via native WAV audio playback.
+    Features local voice caching for zero-latency wake and sleep responses.
     """
 
     def __init__(self, voice_name: Optional[str] = None):
@@ -51,7 +49,7 @@ class TTSService:
         return self.cache_dir / f"{hash_key}.wav"
 
     def speak(self, text: str, block: bool = True):
-        """Speak the given text aloud using the native JARVIS Gemini Puck voice."""
+        """Speak the given text aloud using exclusively the native JARVIS Gemini Puck voice."""
         cleaned = self.clean_text(text)
         if not cleaned:
             return
@@ -68,69 +66,40 @@ class TTSService:
             self.is_speaking = True
             cache_file = self._get_cache_path(text)
             try:
-                # 1. Check local audio cache first (instant 0ms playback)
-                if cache_file.exists():
+                # 1. Check local audio cache (instant 0ms Gemini Puck playback)
+                if cache_file.exists() and cache_file.stat().st_size > 1000:
                     try:
-                        logger.info("GEMINI_PUCK_TTS_PLAYING")
+                        logger.info(f"GEMINI_PUCK_TTS_PLAYING Voice: '{self.voice_name}' Provider: 'Google Gemini Voice (Cached)'")
                         winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
                         logger.info("GEMINI_PUCK_TTS_COMPLETED")
                         return
                     except Exception as e:
-                        logger.debug(f"Cache playback failed: {e}")
+                        logger.debug(f"Cached voice playback error: {e}")
 
                 # 2. Synthesize with Google Gemini Voice Provider (Voice: Puck)
-                try:
-                    res = self.gemini_voice.synthesize(text, voice_name=self.voice_name)
-                    if res.get("success") and "wav_bytes" in res:
-                        wav_bytes = res["wav_bytes"]
-                        cache_file.write_bytes(wav_bytes)
-                        logger.info("GEMINI_PUCK_TTS_PLAYING")
-                        winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
-                        logger.info("GEMINI_PUCK_TTS_COMPLETED")
-                        return
-                    elif res.get("success") and "audio_data" in res:
-                        raw_b64 = res["audio_data"].split(",")[-1]
-                        wav_bytes = base64.b64decode(raw_b64)
-                        cache_file.write_bytes(wav_bytes)
-                        logger.info("GEMINI_PUCK_TTS_PLAYING")
-                        winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
-                        logger.info("GEMINI_PUCK_TTS_COMPLETED")
-                        return
-                except Exception as gemini_err:
-                    logger.warning(f"Gemini Voice synthesis notice: {gemini_err}. Attempting local speech fallback.")
-
-                # 3. Local Offline Fallback (pyttsx3 / PowerShell) if network/API unavailable
-                try:
-                    import pyttsx3
-                    engine = pyttsx3.init()
-                    engine.setProperty('rate', 185)
-                    voices = engine.getProperty('voices')
-                    for v in voices:
-                        if 'david' in v.name.lower() or 'puck' in v.name.lower():
-                            engine.setProperty('voice', v.id)
-                            break
-                    logger.info("GEMINI_PUCK_TTS_PLAYING (Fallback)")
-                    engine.say(text)
-                    engine.runAndWait()
-                    engine.stop()
+                logger.info(f"GEMINI_PUCK_TTS_SYNTHESIZING Voice: '{self.voice_name}' Model: 'gemini-2.5-flash-preview-tts'")
+                res = self.gemini_voice.synthesize(text, voice_name=self.voice_name)
+                
+                if res.get("success") and "wav_bytes" in res:
+                    wav_bytes = res["wav_bytes"]
+                    cache_file.write_bytes(wav_bytes)
+                    logger.info(f"GEMINI_PUCK_TTS_PLAYING Voice: '{self.voice_name}' Provider: 'Google Gemini Voice'")
+                    winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
                     logger.info("GEMINI_PUCK_TTS_COMPLETED")
                     return
-                except Exception:
-                    pass
-
-                try:
-                    ps_text = text.replace("'", "''")
-                    cmd = [
-                        "powershell.exe",
-                        "-NoProfile",
-                        "-Command",
-                        f"Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Speak('{ps_text}')"
-                    ]
-                    logger.info("GEMINI_PUCK_TTS_PLAYING (PS Fallback)")
-                    subprocess.run(cmd, capture_output=True, timeout=8)
+                elif res.get("success") and "audio_data" in res:
+                    raw_b64 = res["audio_data"].split(",")[-1]
+                    wav_bytes = base64.b64decode(raw_b64)
+                    cache_file.write_bytes(wav_bytes)
+                    logger.info(f"GEMINI_PUCK_TTS_PLAYING Voice: '{self.voice_name}' Provider: 'Google Gemini Voice'")
+                    winsound.PlaySound(str(cache_file), winsound.SND_FILENAME)
                     logger.info("GEMINI_PUCK_TTS_COMPLETED")
-                except Exception as ps_err:
-                    logger.error(f"Speech playback fallback failed: {ps_err}")
+                    return
+                else:
+                    logger.error(f"GEMINI_PUCK_TTS_FAILED Error: {res.get('error')}")
+
+            except Exception as gemini_err:
+                logger.error(f"GEMINI_PUCK_TTS_ERROR: {gemini_err}")
             finally:
                 self.is_speaking = False
 
