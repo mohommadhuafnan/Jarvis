@@ -18,8 +18,20 @@ CORS_ORIGINS = [
 ]
 
 # AI Config - Google Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-flash-latest")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+# Ensure both environment variables are set in process for child libraries (LiveKit / GenAI)
+if GOOGLE_API_KEY and not os.environ.get("GOOGLE_API_KEY"):
+    os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+if GEMINI_API_KEY and not os.environ.get("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-2.5-flash")
+
+# LiveKit Cloud Realtime Voice Configuration (SERVER-ONLY: Never expose secrets to frontend)
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
 
 # Google OAuth Config for Gmail & Calendar
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -34,6 +46,7 @@ ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "JARVIS")
 WAKE_WORD = os.getenv("WAKE_WORD", "Jarvis")
 USER_NAME = os.getenv("USER_NAME", "RAVIT")
 LANGUAGE = os.getenv("LANGUAGE", "en") # 'en', 'ta', 'si'
+DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "Puck")
 
 # Workspace Path for sandboxed file management & code execution
 WORKSPACE_DIR = BASE_DIR / "workspace"
@@ -58,4 +71,10 @@ def mask_secret(secret: str, show_chars: int = 4) -> str:
         return "***"
     return f"{secret[:show_chars]}...{secret[-show_chars:]}"
 
+def is_livekit_configured() -> bool:
+    """Check if all LiveKit required credentials are present."""
+    return bool(LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET)
 
+def is_gemini_configured() -> bool:
+    """Check if Gemini API key is configured."""
+    return bool(GOOGLE_API_KEY or GEMINI_API_KEY)

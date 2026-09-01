@@ -354,10 +354,27 @@ Active Plan: {plan.title} (Category: {plan.agent_category})
                 if tool_result.get("message"):
                     return tool_result["message"]
 
+        if tool_used == "memory.search":
+            if isinstance(tool_result, dict):
+                memories = tool_result.get("memories", [])
+                if memories:
+                    top = memories[0]
+                    return f"You told me that your {top.get('key', 'item')} is {top.get('value', '')}, Boss."
+                return "I don't have that stored in memory yet, Boss."
+            if relevant_memories:
+                top = relevant_memories[0]
+                return f"You told me that your {top.get('key', 'item')} is {top.get('value', '')}, Boss."
+            return "I couldn't find that in your memories, Boss."
+
+        if tool_used == "memory.store":
+            if isinstance(tool_result, dict) and tool_result.get("key"):
+                return f"I've remembered that your {tool_result.get('key')} is {tool_result.get('value')}, Boss."
+            return "I've remembered that for you, Boss."
+
         if tool_used in ["tasks.create", "tasks.create_reminder"]:
             if isinstance(tool_result, dict) and tool_result.get("reminder_time"):
                 return f"I've set your reminder for {tool_result.get('reminder_time')}, Boss."
-            return "Task created and armed in background scheduler, Boss."
+            return "Reminder created and armed in background scheduler, Boss."
 
         if tool_used == "computer.openApplication":
             app = ""

@@ -6,7 +6,7 @@ import { FloatingCommandCard } from '../hud/FloatingCommandCard';
 import { ActionStatusCard } from '../hud/ActionStatusCard';
 import { VoiceWaveform } from '../hud/VoiceWaveform';
 import { CommandBar } from '../hud/CommandBar';
-import { MessageSquare, Radio, Sparkles } from 'lucide-react';
+import { Radio } from 'lucide-react';
 import { soundFX } from '../../lib/sound/SoundFX';
 
 interface DashboardViewProps {
@@ -31,6 +31,7 @@ interface DashboardViewProps {
   isProcessing: boolean;
   continuousConversation?: boolean;
   onToggleContinuousConversation?: () => void;
+  isLiveKitConnected?: boolean;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -47,7 +48,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSendMessage,
   isProcessing,
   continuousConversation = true,
-  onToggleContinuousConversation
+  onToggleContinuousConversation,
+  isLiveKitConnected = false,
 }) => {
   const getVoiceStateLabel = () => {
     if (state === 'LISTENING') return "VOICE: LISTENING";
@@ -69,6 +71,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Voice Gateway Telemetry Bar & Pill Strip */}
       <div className="flex flex-wrap items-center justify-center gap-2 pt-2 px-4 z-20">
+        {/* LiveKit Cloud Realtime Badge */}
+        <div className={`px-2.5 py-1 rounded-full border text-[10px] font-mono tracking-wider flex items-center space-x-1.5 transition-all duration-200 ${
+          isLiveKitConnected
+            ? 'bg-[#00F0FF]/15 border-[#00F0FF] text-[#00F0FF] shadow-[0_0_8px_rgba(0,240,255,0.3)]'
+            : 'bg-[#0D0B0E] border-[#8F8F98]/30 text-[#8F8F98]'
+        }`}>
+          <span className={`size-1.5 rounded-full ${isLiveKitConnected ? 'bg-[#00F0FF] animate-ping' : 'bg-[#8F8F98]'}`} />
+          <span>{isLiveKitConnected ? 'LIVEKIT: REALTIME WEBRTC ACTIVE' : 'LIVEKIT: STANDBY'}</span>
+        </div>
+
         {/* Voice State Badge */}
         <div className={`px-2.5 py-1 rounded-full border text-[10px] font-mono tracking-wider transition-all duration-200 ${
           state === 'LISTENING'
@@ -116,7 +128,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span>SAY <b className="text-[#F5F5F5]">"HELLO JARVIS"</b> TO SPEAK</span>
         </div>
       </div>
-
 
       {/* Main Center Stage: Floating Cards + Central HUD Reactor Core */}
       <div className="flex-1 flex flex-col items-center justify-center relative px-4 my-auto">

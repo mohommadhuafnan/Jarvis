@@ -7,7 +7,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.config import CORS_ORIGINS, HOST, PORT, USER_NAME, WAKE_WORD, ASSISTANT_NAME, LANGUAGE, GEMINI_API_KEY
+from backend.config import (
+    CORS_ORIGINS, HOST, PORT, USER_NAME, WAKE_WORD, ASSISTANT_NAME, LANGUAGE,
+    GEMINI_API_KEY, GOOGLE_API_KEY, LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+    is_livekit_configured, is_gemini_configured, DEFAULT_VOICE, DEFAULT_MODEL
+)
 from backend.database.db import init_db, get_db
 from backend.database.mongodb import get_mongo_client, check_db_health, close_mongo_connection
 from backend.database.indexes import create_indexes
@@ -569,6 +573,70 @@ def transcribe_audio_stream(payload: Dict[str, Any] = Body(...)):
 def get_voice_sessions_endpoint():
     sessions = voice_session_service.list_sessions()
     return {"sessions": sessions}
+
+# --- LiveKit Cloud Realtime Voice Token & Status Endpoints ---
+@app.get("/api/livekit/status")
+def get_livekit_status():
+    """Check LiveKit Cloud connection readiness and configuration status."""
+    return {
+        "configured": is_livekit_configured(),
+        "server_url": LIVEKIT_URL,
+        "has_api_key": bool(LIVEKIT_API_KEY),
+        "has_api_secret": bool(LIVEKIT_API_SECRET),
+        "gemini_configured": is_gemini_configured(),
+        "default_voice": DEFAULT_VOICE,
+        "default_model": DEFAULT_MODEL,
+        "assistant_name": ASSISTANT_NAME,
+        "user_name": USER_NAME,
+        "status": "READY" if is_livekit_configured() else "NOT_CONFIGURED"
+    }
+
+@app.get("/api/livekit/token")
+def get_livekit_token(
+    room: Optional[str] = Query("jarvis-room-default"),
+    identity: Optional[str] = Query(None),
+    name: Optional[str] = Query(None)
+):
+    """
+    Generate a secure short-lived LiveKit access token for WebRTC room connection.
+    Protects server API secrets from being exposed to the frontend browser bundle.
+    """
+    if not is_livekit_configured():
+        raise HTTPException(
+            status_code=500,
+            detail="LiveKit credentials are not configured on server (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)"
+        )
+
+    room_name = room or "jarvis-room-default"
+    participant_identity = identity or f"commander-{USER_NAME.lower().replace(' ', '-')}"
+    participant_name = name or USER_NAME or "Commander"
+
+    try:
+        from livekit import api
+        grant = api.VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True
+        )
+        token = (
+            api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+            .with_identity(participant_identity)
+            .with_name(participant_name)
+            .with_grants(grant)
+            .to_jwt()
+        )
+        return {
+            "success": True,
+            "server_url": LIVEKIT_URL,
+            "token": token,
+            "room": room_name,
+            "identity": participant_identity,
+            "name": participant_name
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate LiveKit token: {str(e)}")
 
 # --- Settings ---
 @app.get("/api/settings")

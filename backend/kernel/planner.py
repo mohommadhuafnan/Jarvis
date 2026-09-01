@@ -167,7 +167,7 @@ class TaskPlanner:
             return TaskPlan(title=f"Knowledge: Query Lectures for {target_day.capitalize()}", agent_category="knowledge", is_multi_step=False, steps=steps)
 
         # 0.3. Knowledge: Profile & 'What do you know about me?'
-        if any(phrase in lower for phrase in ["what do you know about me", "tell me about myself", "my profile", "who am i", "my main project", "what is my main project", "what project"]):
+        if any(phrase in clean_lower for phrase in ["what do you know about me", "tell me about myself", "my profile", "who am i"]):
             steps = [
                 TaskStep(id=1, description="Retrieving structured personal profile from knowledge vault", tool_name="knowledge.get_profile", arguments={})
             ]
@@ -183,8 +183,8 @@ class TaskPlanner:
             ]
             return TaskPlan(title=f"Knowledge: Forget '{target}' [CONFIRM]", agent_category="knowledge", is_multi_step=False, steps=steps)
 
-        # 0.5. Memory Store Intent ("Remember that...", "Remember my...")
-        if lower.startswith("remember") or "remember that" in lower:
+        # 0.5. Memory Store Intent ("Remember that...", "Remember my...", "Jarvis, remember...")
+        if "remember" in lower:
             clean = re.sub(r'^(jarvis\s*,?\s*)?remember(\s+that)?\s+', '', user_command, flags=re.I).strip()
             key = "fact"
             value = clean
@@ -216,7 +216,7 @@ class TaskPlanner:
             ]
             return TaskPlan(title=f"Memory: Recall '{query}'", agent_category="system", is_multi_step=False, steps=steps)
 
-        # 0.4. Compound Calendar + Reminder Intent
+        # 0.7. Compound Calendar + Reminder Intent
         # Example: "Tomorrow I have a meeting at 4:30 AM. Remind me." or "I have a meeting at 3 PM tomorrow. Remind me to attend."
         if ("meeting" in lower or "event" in lower or "appointment" in lower) and ("remind" in lower or "reminder" in lower):
             dt_info = parse_natural_datetime(user_command)
@@ -228,21 +228,31 @@ class TaskPlanner:
             elif "project" in lower:
                 title = "Project Meeting"
 
+            raw_time_str = dt_info.get("display_time", "")
+            time_m = re.search(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', lower, flags=re.I)
+            if time_m:
+                raw_time_str = f"{time_m.group(1).upper()} ({dt_info['display_time']})"
+
             steps = [
                 TaskStep(id=1, description=f"Scheduling calendar event '{title}' for {dt_info['display_date']} at {dt_info['display_time']} [CONFIRM]", tool_name="calendar.createEvent", arguments={"title": title, "start_time": dt_info["iso_start"], "end_time": dt_info["iso_end"]}),
-                TaskStep(id=2, description=f"Persisting verified background reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": title, "reminder_time": f"{dt_info['display_date']} at {dt_info['display_time']}", "due_at": dt_info["due_at"]})
+                TaskStep(id=2, description=f"Persisting verified background reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": title, "reminder_time": f"{dt_info['display_date']} at {raw_time_str}", "due_at": dt_info["due_at"]})
             ]
             return TaskPlan(title=f"Calendar & Reminder: {title} ({dt_info['display_date']} at {dt_info['display_time']})", agent_category="google", is_multi_step=True, steps=steps)
 
-        # 0.5. Pure Reminders Intent ("Remind me tomorrow at 8 AM to work on AgriMind", "Remind me in 10 minutes to call Bob")
+        # 0.8. Pure Reminders Intent ("Remind me tomorrow at 8 AM to work on AgriMind", "Remind me in 10 minutes to call Bob")
         if lower.startswith("remind") or "remind me" in lower or "set a reminder" in lower:
             dt_info = parse_natural_datetime(user_command)
             clean_remind = re.sub(r'^(jarvis\s*,?\s*)?(remind\s+me|set\s+a\s+reminder)\s+(to\s+|at\s+[^\s]+\s+to\s+|for\s+)', '', user_command, flags=re.I).strip()
             clean_remind = re.sub(r'(?:tomorrow|today|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\bin\s+\d+\s*(?:minutes?|hours?))', '', clean_remind, flags=re.I).strip()
             clean_remind = clean_remind or "Follow up task"
 
+            raw_time_str = dt_info.get("display_time", "")
+            time_m = re.search(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', lower, flags=re.I)
+            if time_m:
+                raw_time_str = f"{time_m.group(1).upper()} ({dt_info['display_time']})"
+
             steps = [
-                TaskStep(id=1, description=f"Scheduling persistent reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": clean_remind, "reminder_time": f"{dt_info['display_date']} at {dt_info['display_time']}", "due_at": dt_info["due_at"]}),
+                TaskStep(id=1, description=f"Scheduling persistent reminder for {dt_info['display_date']} at {dt_info['display_time']}", tool_name="tasks.create_reminder", arguments={"reminder_text": clean_remind, "reminder_time": f"{dt_info['display_date']} at {raw_time_str}", "due_at": dt_info["due_at"]}),
                 TaskStep(id=2, description="Registering in background scheduler daemon", tool_name=None)
             ]
             return TaskPlan(title=f"Reminder: {clean_remind} ({dt_info['display_date']} at {dt_info['display_time']})", agent_category="system", is_multi_step=False, steps=steps)

@@ -232,6 +232,38 @@ export async function fetchVoiceTelemetry() {
   };
 }
 
+// --- LiveKit Realtime Voice API Clients ---
+export async function fetchLiveKitStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/livekit/status`);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  return {
+    configured: false,
+    server_url: "",
+    has_api_key: false,
+    has_api_secret: false,
+    gemini_configured: false,
+    status: "OFFLINE"
+  };
+}
+
+export async function fetchLiveKitToken(room = "jarvis-room-default", identity?: string, name?: string) {
+  try {
+    const params = new URLSearchParams({ room });
+    if (identity) params.append("identity", identity);
+    if (name) params.append("name", name);
+    const res = await fetch(`${API_BASE}/livekit/token?${params.toString()}`);
+    if (res.ok) return await res.json();
+  } catch (e) {
+    console.error("[JARVIS] Error fetching LiveKit token:", e);
+  }
+  return {
+    success: false,
+    error: "Failed to fetch token from backend server"
+  };
+}
+
 export async function fetchGoogleAuthStatus() {
   try {
     const res = await fetch(`${API_BASE}/auth/google/status`);

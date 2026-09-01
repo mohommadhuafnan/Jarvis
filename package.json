@@ -1,23 +1,27 @@
 {
   "name": "jarvis-ai-assistant",
-  "version": "2.5.1",
-  "description": "JARVIS - Futuristic Cyberpunk Red HUD Personal AI Assistant Operating System with Gemini AI",
+  "version": "3.0.0",
+  "description": "JARVIS - Futuristic Cyberpunk Red HUD Personal AI Assistant Operating System with LiveKit Cloud & Gemini Realtime Voice",
   "scripts": {
     "build": "npm --prefix frontend install && npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "build:frontend": "npm --prefix frontend run build",
-    "start:backend": "python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload"
+    "start:backend": "python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload",
+    "start:agent": "python backend/agent.py dev",
+    "test": "python -m unittest discover -s tests",
+    "test:livekit": "python -m unittest tests/test_livekit_token.py tests/test_livekit_agent_tools.py"
   },
   "keywords": [
     "jarvis",
     "ai-assistant",
     "cyberpunk",
     "hacker-hud",
-    "gemini",
+    "livekit",
+    "gemini-live",
     "voice-first",
     "barge-in",
-    "speech-recognition",
+    "webrtc",
     "fastapi",
     "react"
   ],

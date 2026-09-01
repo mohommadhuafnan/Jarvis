@@ -22,8 +22,9 @@ import { SettingsView } from './components/views/SettingsView';
 import { audioManager } from './lib/voice/AudioContextManager';
 import { speechEngine, VoiceMode } from './lib/voice/SpeechToText';
 import { geminiVoiceService } from './lib/voice/GeminiVoiceService';
+import { livekitVoiceManager, LiveKitVoiceState } from './lib/voice/LiveKitVoiceManager';
 import { soundFX } from './lib/sound/SoundFX';
-import { fetchSystemStats, sendChatMessage, processVoiceGatewayTurn, interruptVoiceGateway, fetchVoiceTelemetry, fetchDueReminders } from './lib/api';
+import { fetchSystemStats, sendChatMessage, processVoiceGatewayTurn, interruptVoiceGateway, fetchVoiceTelemetry, fetchDueReminders, fetchLiveKitStatus } from './lib/api';
 
 
 export function App() {
@@ -85,6 +86,8 @@ export function App() {
 
   const audioAnimRef = useRef<number | null>(null);
   const replyTimeoutRef = useRef<any>(null);
+  // LiveKit Cloud Connection State
+  const [isLiveKitConnected, setIsLiveKitConnected] = useState<boolean>(false);
 
   // 1. Initial System Data & Polling
   useEffect(() => {
@@ -99,6 +102,86 @@ export function App() {
     loadStats();
     const interval = setInterval(loadStats, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // 2. LiveKit Realtime Voice Manager Setup & Event Subscriptions
+  useEffect(() => {
+    livekitVoiceManager.setCallbacks({
+      onStateChange: (lkState: LiveKitVoiceState) => {
+        if (lkState === 'CONNECTED' || lkState === 'LISTENING') {
+          setIsLiveKitConnected(true);
+          setState('LISTENING');
+          setIsListening(true);
+          setActionStatus('LiveKit WebRTC: Listening to speech (Hands-Free)...');
+          setCurrentCommand('Listening...');
+        } else if (lkState === 'THINKING') {
+          setIsLiveKitConnected(true);
+          setState('THINKING');
+          setIsListening(false);
+          setActionStatus('Gemini Live: Realtime neural reasoning & tool execution...');
+        } else if (lkState === 'SPEAKING') {
+          setIsLiveKitConnected(true);
+          setState('SPEAKING');
+          setIsListening(false);
+          setActionStatus('JARVIS speaking (Barge-In active)...');
+        } else if (lkState === 'DISCONNECTED') {
+          setIsLiveKitConnected(false);
+          setState('IDLE');
+          setIsListening(false);
+          setActionStatus('Standby (LiveKit Cloud Ready)');
+          setCurrentCommand("Say 'Jarvis' or tap mic to speak");
+        } else if (lkState === 'ERROR') {
+          setIsLiveKitConnected(false);
+          setState('ERROR');
+          setIsListening(false);
+          soundFX.playErrorBuzz();
+          setActionStatus('LiveKit WebRTC Connection Error');
+          setTimeout(() => setState('IDLE'), 3000);
+        }
+      },
+      onAudioLevel: (level: number) => {
+        setAudioLevel(level);
+      },
+      onTranscript: (transcript: string, isUser: boolean) => {
+        const clean = transcript.trim();
+        if (!clean) return;
+
+        setCurrentCommand(clean);
+        const msg: ChatMessage = {
+          id: `lk_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          role: isUser ? 'user' : 'assistant',
+          content: clean,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, msg]);
+      },
+      onToolAction: (toolName: string, status: string) => {
+        setCurrentTool(toolName);
+        if (status === 'executing') {
+          setState('EXECUTING');
+          setActionStatus(`Executing ${toolName}...`);
+        } else {
+          setActionStatus(`Completed ${toolName}`);
+          const newLog: ActivityLogItem = {
+            id: `act_${Date.now()}`,
+            module: toolName.split('.')[0].toUpperCase(),
+            action: `Executed ${toolName}`,
+            details: `Completed successfully`,
+            status: 'success',
+            created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setActivityLogs(prev => [newLog, ...prev]);
+        }
+      },
+      onError: (errorMsg: string) => {
+        console.error("[JARVIS LiveKit] Voice error:", errorMsg);
+        setActionStatus(`LiveKit Error: ${errorMsg}`);
+      }
+    });
+
+    return () => {
+      livekitVoiceManager.disconnect();
+    };
   }, []);
 
   // 2. Continuous Audio Amplitude Monitoring
@@ -313,18 +396,30 @@ export function App() {
     setActionStatus('Standby (Say "Jarvis" to wake)');
   };
 
-  const toggleMic = () => {
-    if (geminiVoiceService.isSpeaking()) {
-      geminiVoiceService.stop();
-      interruptVoiceGateway().catch(() => {});
-      startCommandListening();
+  const toggleMic = async () => {
+    // 1. If currently connected to LiveKit WebRTC session -> disconnect
+    if (livekitVoiceManager.isConnected()) {
+      soundFX.playClick();
+      await livekitVoiceManager.disconnect();
+      stopVoiceListening();
       return;
     }
 
-    if (isListening) {
-      stopVoiceListening();
-    } else {
-      soundFX.playWakeChime();
+    // 2. Stop any active TTS audio
+    if (geminiVoiceService.isSpeaking()) {
+      geminiVoiceService.stop();
+      interruptVoiceGateway().catch(() => {});
+    }
+
+    // 3. Connect to LiveKit Cloud Realtime Voice
+    soundFX.playWakeChime();
+    setActionStatus('Connecting to LiveKit Cloud & Gemini Live...');
+    setState('THINKING');
+
+    const connected = await livekitVoiceManager.connect('jarvis-room-default', userName);
+    if (!connected) {
+      // If LiveKit is temporarily unreachable, fallback to client-side STT
+      console.warn('[JARVIS] Falling back to Web Speech engine...');
       startCommandListening();
     }
   };
@@ -543,6 +638,7 @@ export function App() {
               isProcessing={isProcessing}
               continuousConversation={continuousConversation}
               onToggleContinuousConversation={() => setContinuousConversation(!continuousConversation)}
+              isLiveKitConnected={isLiveKitConnected}
             />
           )}
 
