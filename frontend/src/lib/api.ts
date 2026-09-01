@@ -392,6 +392,3 @@ export async function fetchKnowledgeSummary() {
   } catch (e) {}
   return null;
 }
-
-
-
