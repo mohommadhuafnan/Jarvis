@@ -224,3 +224,4 @@ If the user speaks in Tamil or Sinhala, detect the language and respond fluently
         }
 
 ai_service = GeminiService()
+gemini_service = ai_service

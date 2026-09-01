@@ -10,6 +10,9 @@ from backend.tools.computer_tools import (
     search_youtube,
     open_folder
 )
+from backend.voice.tts_service import tts_service
+from backend.background_service import background_service
+from backend.services.startup_service import startup_service
 
 class TestDesktopActions(unittest.TestCase):
 
@@ -78,6 +81,26 @@ class TestDesktopActions(unittest.TestCase):
             res = open_folder("downloads")
             self.assertTrue(res["success"])
             self.assertIn("Downloads", res["path"])
+
+    def test_tts_text_cleaner(self):
+        raw = "```python\nprint(1)\n```\nHere is a **bold** item with `code` and [link](http://test.com) 🚀"
+        cleaned = tts_service.clean_text(raw)
+        self.assertNotIn("```", cleaned)
+        self.assertNotIn("**", cleaned)
+        self.assertIn("bold", cleaned)
+        self.assertIn("code", cleaned)
+
+    def test_sleep_phrases_recognition(self):
+        self.assertTrue(background_service._is_sleep_phrase("Sleep JARVIS"))
+        self.assertTrue(background_service._is_sleep_phrase("jarvis sleep"))
+        self.assertTrue(background_service._is_sleep_phrase("go to sleep"))
+        self.assertTrue(background_service._is_sleep_phrase("stop listening"))
+        self.assertFalse(background_service._is_sleep_phrase("open chrome"))
+
+    def test_startup_service_status(self):
+        status = startup_service.get_status()
+        self.assertIn("startup_enabled", status)
+        self.assertIn("startup_path", status)
 
 if __name__ == "__main__":
     unittest.main()

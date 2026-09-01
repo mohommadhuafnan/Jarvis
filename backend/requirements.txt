@@ -27,5 +27,7 @@ pygetwindow>=0.0.9
 pystray>=0.19.5
 playwright>=1.44.0
 
-# Local Offline Wake Word Detection
+# Local Offline Wake Word & Speech Synthesis
 SpeechRecognition>=3.10.0
+pyttsx3>=2.90
+pywin32>=306
